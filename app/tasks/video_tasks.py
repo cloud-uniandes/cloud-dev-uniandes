@@ -2,6 +2,9 @@ import shutil
 from pathlib import Path
 from time import sleep
 from uuid import UUID
+import os
+import logging
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from moviepy import ImageClip, VideoFileClip, CompositeVideoClip, vfx
@@ -11,10 +14,21 @@ from app.core.config import settings
 from app.utils.video_validator_sync import validate_video_sync
 from app.models.video import Video
 
+logger = logging.getLogger(__name__)
+
 # Create synchronous database session for Celery worker
 SYNC_DATABASE_URL = settings.DATABASE_URL.replace("+asyncpg", "")
 sync_engine = create_engine(SYNC_DATABASE_URL)
 SyncSessionLocal = sessionmaker(bind=sync_engine)
+
+# 🆕 AGREGAR: Storage backend para S3 (solo si STORAGE_TYPE=s3)
+if settings.STORAGE_TYPE == "s3":
+    from app.storage.s3_storage import S3Storage
+    storage_s3 = S3Storage()
+    logger.info("🪣 Celery using S3 storage backend")
+else:
+    storage_s3 = None
+    logger.info("📁 Celery using local/NFS storage backend")
 
 
 @celery_app.task(name="process_video")
@@ -31,6 +45,9 @@ def process_video_task(video_id: str, temp_file_path: str):
     """
     db = SyncSessionLocal()
     
+    local_temp_input = None
+    local_temp_output = None
+    
     try:
         sleep(5)
 
@@ -44,6 +61,20 @@ def process_video_task(video_id: str, temp_file_path: str):
         video.status = "processing"
         db.commit()
         
+        if settings.STORAGE_TYPE == "s3":
+            local_temp_input = f"{settings.TEMP_PATH}/{video_id}_input.mp4"
+            logger.info(f"Downloading from S3: {temp_file_path}")
+            if not storage_s3.download_file_sync(temp_file_path, local_temp_input):
+                raise Exception("Failed to download video from S3")
+        
+            video_file_path = local_temp_input
+            logger.info(f"Video downloaded to: {local_temp_input}")
+        
+        else:
+            # Para NFS: usar directamente el path
+            video_file_path = temp_file_path
+            logger.info(f"✅ Using local file: {video_file_path}")
+        
         # Validate video with FFprobe
         metadata = validate_video_sync(temp_file_path)
         
@@ -56,7 +87,21 @@ def process_video_task(video_id: str, temp_file_path: str):
 
 
         # Intro and Outro logo
-        logo_path = Path(settings.RES_PATH) / "logo720.png"
+        if settings.STORAGE_TYPE == "s3":
+            # Descargar logo de S3 si no existe localmente
+            logo_local = f"{settings.TEMP_PATH}/logo720.png"
+            logo_s3_key = "resources/logo720.png"
+            
+            if not os.path.exists(logo_local):
+                logger.info(f"Downloading logo from S3: {logo_s3_key}")
+                if not storage_s3.download_file_sync(logo_s3_key, logo_local):
+                    logger.warning("Logo not found in S3, using default")
+                    # Aquí podrías crear un logo temporal o usar uno por defecto
+            
+            logo_path = Path(logo_local)
+        else:
+            # Para NFS: usar logo desde RES_PATH
+            logo_path = Path(settings.RES_PATH) / "logo720.png"
 
         # Determine durations
         video_duration = video.duration_seconds if video.duration_seconds <= 30 else 30
@@ -102,14 +147,45 @@ def process_video_task(video_id: str, temp_file_path: str):
         # Remove audio and resize
         final_clip = (final_clip
                     .with_audio(None))
+        
 
         # Export
-        temp_path = Path(temp_file_path)
-        processed_folder = Path(settings.STORAGE_PATH) / "processed"
-        processed_folder.mkdir(parents=True, exist_ok=True)
-        
-        processed_file_path = processed_folder / temp_path.name
-        final_clip.write_videofile(processed_file_path)
+        if settings.STORAGE_TYPE == "s3":
+            # Para S3: renderizar a temporal y luego subir
+            local_temp_output = f"{settings.TEMP_PATH}/{video_id}_processed.mp4"
+            final_clip.write_videofile(
+                local_temp_output,
+                codec='libx264',
+                audio_codec='aac',
+                logger=None
+            )
+            
+            # Subir a S3
+            s3_processed_key = f"processed/{video_id}.mp4"
+            
+            if not storage_s3.upload_file_sync(local_temp_output, s3_processed_key):
+                raise Exception("Failed to upload processed video to S3")
+            
+            # Actualizar path en BD con S3 key
+            processed_file_path = s3_processed_key
+            logger.info(f"Video uploaded to S3: {s3_processed_key}")
+            
+        else:
+            # Para NFS: renderizar directamente a carpeta processed
+            temp_path = Path(temp_file_path)
+            processed_folder = Path(settings.STORAGE_PATH) / "processed"
+            processed_folder.mkdir(parents=True, exist_ok=True)
+            
+            processed_file_path = str(processed_folder / temp_path.name)
+            
+            logger.info(f"Rendering to: {processed_file_path}")
+            final_clip.write_videofile(
+                processed_file_path,
+                codec='libx264',
+                audio_codec='aac',
+                logger=None
+            )
+            logger.info(f"Video saved to: {processed_file_path}")
 
         # Clean up
         videoclip.close()
@@ -120,14 +196,25 @@ def process_video_task(video_id: str, temp_file_path: str):
         video.status = "processed"
         db.commit()
         
+        if settings.STORAGE_TYPE == "s3":
+            if local_temp_input and os.path.exists(local_temp_input):
+                os.remove(local_temp_input)
+            if local_temp_output and os.path.exists(local_temp_output):
+                os.remove(local_temp_output)
+        
+        else:
         # Clean up temp file
-        if temp_path.exists():
-            temp_path.unlink()
+            temp_path = Path(temp_file_path)
+            if temp_path.exists():
+                temp_path.unlink()
+        
+        logger.info(f"Video {video_id} processed succesfully")
         
         return {
             "status": "success",
             "video_id": video_id,
-            "message": "Video processed successfully"
+            "message": "Video processed successfully",
+            "file_path": str(processed_file_path)
         }
         
     except Exception as e:
@@ -135,6 +222,15 @@ def process_video_task(video_id: str, temp_file_path: str):
         if video:
             video.status = "failed"
             db.commit()
+        
+        if settings.STORAGE_TYPE == "s3":
+            for temp_file in [local_temp_input,local_temp_output]:
+                if temp_file and os.path.exists(temp_file):
+                    try:
+                        os.remove(temp_file)
+                        logger.info(f"Cleaned temp file: {temp_file}")
+                    except:
+                        pass
         
         return {
             "status": "failed",

@@ -43,3 +43,4 @@ python-dateutil==2.9.0
 
 redis==5.0.1
 hiredis==2.3.2
+boto3==1.35.36 
