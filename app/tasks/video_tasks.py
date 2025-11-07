@@ -76,14 +76,14 @@ def process_video_task(video_id: str, temp_file_path: str):
             logger.info(f"✅ Using local file: {video_file_path}")
         
         # Validate video with FFprobe
-        metadata = validate_video_sync(temp_file_path)
+        metadata = validate_video_sync(video_file_path)
         
         # Update duration
         video.duration_seconds = int(metadata['duration'])
         db.commit()
         
         # Process video (cutting, adding banner, watermark and resizing.)
-        videoclip = VideoFileClip(video.file_path)
+        videoclip = VideoFileClip(video_file_path)
 
 
         # Intro and Outro logo
@@ -150,25 +150,69 @@ def process_video_task(video_id: str, temp_file_path: str):
         
 
         # Export
+                # Export
         if settings.STORAGE_TYPE == "s3":
             # Para S3: renderizar a temporal y luego subir
             local_temp_output = f"{settings.TEMP_PATH}/{video_id}_processed.mp4"
+            logger.info(f"🎬 Rendering video to temp file: {local_temp_output}")
+
             final_clip.write_videofile(
                 local_temp_output,
-                codec='libx264',
-                audio_codec='aac',
+                codec="libx264",
+                audio=False,  # sin audio explícitamente
+                ffmpeg_params=["-movflags", "faststart"],  # optimiza para streaming
                 logger=None
             )
-            
+
+            # Cerrar clips explícitamente
+            try:
+                final_clip.close()
+                videoclip.close()
+                logger.info("✅ Clips closed correctly")
+            except Exception as e:
+                logger.warning(f"⚠️ Error closing clips: {e}")
+
+            # Esperar para asegurar flush en FS (importante en Docker overlayFS)
+            sleep(2)
+
+            # Loggear tamaño local y validar video
+            import subprocess, os
+            local_size = os.path.getsize(local_temp_output)
+            logger.info(f"📏 Local processed file size: {local_size} bytes")
+
+            try:
+                result = subprocess.run(
+                    ["ffprobe", "-v", "error", "-show_format", "-show_streams", local_temp_output],
+                    capture_output=True, text=True
+                )
+                logger.info(f"🔍 FFPROBE local output:\n{result.stdout}")
+            except Exception as e:
+                logger.warning(f"FFPROBE validation failed: {e}")
+
             # Subir a S3
             s3_processed_key = f"processed/{video_id}.mp4"
-            
+            logger.info(f"⬆️ Uploading to S3 key: {s3_processed_key}")
+
             if not storage_s3.upload_file_sync(local_temp_output, s3_processed_key):
-                raise Exception("Failed to upload processed video to S3")
-            
+                raise Exception("❌ Failed to upload processed video to S3")
+
+            # Validar tamaño remoto
+            try:
+                obj_info = storage_s3.s3_client.head_object(
+                    Bucket=storage_s3.bucket_name,
+                    Key=s3_processed_key
+                )
+                remote_size = obj_info["ContentLength"]
+                logger.info(f"☁️ S3 uploaded size: {remote_size} bytes")
+                if abs(remote_size - local_size) > 1024:
+                    logger.warning("⚠️ Size mismatch between local and uploaded file!")
+            except Exception as e:
+                logger.warning(f"Could not validate S3 object: {e}")
+
             # Actualizar path en BD con S3 key
             processed_file_path = s3_processed_key
-            logger.info(f"Video uploaded to S3: {s3_processed_key}")
+            logger.info(f"✅ Video uploaded successfully to S3: {s3_processed_key}")
+
             
         else:
             # Para NFS: renderizar directamente a carpeta processed
