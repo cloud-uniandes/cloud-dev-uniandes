@@ -118,12 +118,12 @@ def process_video_task(video_id: str, temp_file_path: str):
         if video.duration_seconds > 30:
             videoclip = videoclip.subclipped(0, 30)
 
-        videoclip = videoclip.with_effects([vfx.CrossFadeIn(watermark_fadein)]).resized((1280,720))
+        videoclip = videoclip.with_effects([vfx.CrossFadeIn(watermark_fadein)]).resized((1280,1080))
 
         # Watermark (positioned at 50% from top, centered horizontally)
         watermark = (ImageClip(str(logo_path))
              .with_duration(video_duration)
-             .resized(height=100)  # Resize logo for watermark
+             .resized(height=150)  # Resize logo for watermark
              .with_position(("center", 0.5), relative=True)
              .with_effects([vfx.CrossFadeIn(watermark_fadein)])
              .with_opacity(0.5)
