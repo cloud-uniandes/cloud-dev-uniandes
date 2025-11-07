@@ -49,9 +49,9 @@ def validate_video_sync(file_path: str) -> Dict:
             )
         
         # Validate resolution (minimum 1080p as per requirements)
-        if height < 1080:
+        if height < 600:
             raise ValidationException(
-                f"Video resolution must be at least 1080p (current: {height}p)"
+                f"Video resolution must be at least 600 (current: {height}p)"
             )
         
         return {
