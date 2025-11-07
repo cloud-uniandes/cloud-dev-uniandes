@@ -145,13 +145,13 @@ def process_video_task(video_id: str, temp_file_path: str):
         ])
 
         # Remove audio and resize
-        final_clip = (final_clip
-                    .with_audio(None))
+        final_clip = (final_clip.with_audio(None))
         
 
         # Export
         if settings.STORAGE_TYPE == "s3":
             # Para S3: renderizar a temporal y luego subir
+            os.makedirs(settings.TEMP_PATH, exist_ok=True)
             local_temp_output = f"{settings.TEMP_PATH}/{video_id}_processed.mp4"
             final_clip.write_videofile(
                 local_temp_output,
@@ -159,6 +159,24 @@ def process_video_task(video_id: str, temp_file_path: str):
                 audio_codec='aac',
                 logger=None
             )
+            
+            if not os.path.exists(local_temp_output):
+                raise Exception(f"Rendered file not found: {local_temp_output}")
+            
+            output_size = os.path.getsize(local_temp_output)
+            logger.info(f"Rendered size: {output_size / (1024*1024):.2f} MB")
+            
+            if output_size < 1000:
+                raise Exception(f"Rendered file too small (corrupted): {output_size} bytes")
+            
+            # ✅ Validar video procesado con FFprobe
+            logger.info(f"Validating processed video: {local_temp_output}")
+            try:
+                processed_metadata = validate_video_sync(local_temp_output)
+                logger.info(f"Processed video is VALID - Duration: {processed_metadata['duration']}s")
+            except Exception as e:
+                raise Exception(f"Processed video validation FAILED: {str(e)}")
+           
             
             # Subir a S3
             s3_processed_key = f"processed/{video_id}.mp4"
@@ -199,14 +217,16 @@ def process_video_task(video_id: str, temp_file_path: str):
         if settings.STORAGE_TYPE == "s3":
             if local_temp_input and os.path.exists(local_temp_input):
                 os.remove(local_temp_input)
+                logger.info(f"Cleaned input: {local_temp_input}")
             if local_temp_output and os.path.exists(local_temp_output):
                 os.remove(local_temp_output)
-        
+                logger.info(f"Cleaned output: {local_temp_output}")
         else:
-        # Clean up temp file
             temp_path = Path(temp_file_path)
             if temp_path.exists():
                 temp_path.unlink()
+                logger.info(f"Cleaned: {temp_file_path}")
+        
         
         logger.info(f"Video {video_id} processed succesfully")
         
@@ -240,3 +260,4 @@ def process_video_task(video_id: str, temp_file_path: str):
         
     finally:
         db.close()
+        logger.info("Database session closed")
