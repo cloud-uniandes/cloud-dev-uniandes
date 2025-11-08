@@ -55,7 +55,7 @@ def process_video_task(video_id: str, temp_file_path: str):
     try:
         sleep(5)
         
-        logger.info(f"🎬 Processing video {video_id}")
+        logger.info(f" Processing video {video_id}")
 
         # Get video record
         video = db.query(Video).filter(Video.id == UUID(video_id)).first()
@@ -66,35 +66,35 @@ def process_video_task(video_id: str, temp_file_path: str):
         # Update status to processing
         video.status = "processing"
         db.commit()
-        logger.info("✅ Status updated to 'processing'")
+        logger.info(" Status updated to 'processing'")
         
         # PASO 1: Download from S3 if needed
         if settings.STORAGE_TYPE == "s3":
             os.makedirs(settings.TEMP_PATH, exist_ok=True)
             local_temp_input = f"{settings.TEMP_PATH}/{video_id}_input.mp4"
             
-            logger.info(f"📥 Downloading from S3: {temp_file_path}")
+            logger.info(f" Downloading from S3: {temp_file_path}")
             if not storage_s3.download_file_sync(temp_file_path, local_temp_input):
                 raise Exception("Failed to download video from S3")
             
             video_file_path = local_temp_input
-            logger.info(f"✅ Video downloaded to: {local_temp_input}")
+            logger.info(f" Video downloaded to: {local_temp_input}")
         else:
             # Para NFS: usar directamente el path
             video_file_path = temp_file_path
-            logger.info(f"✅ Using local file: {video_file_path}")
+            logger.info(f" Using local file: {video_file_path}")
         
         # PASO 2: Validate video with FFprobe
-        logger.info(f"🔍 Validating video: {video_file_path}")
+        logger.info(f" Validating video: {video_file_path}")
         metadata = validate_video_sync(video_file_path)
         
         # Update duration
         video.duration_seconds = int(metadata['duration'])
         db.commit()
-        logger.info(f"✅ Duration: {video.duration_seconds}s")
+        logger.info(f" Duration: {video.duration_seconds}s")
         
         # PASO 3: Process video (cutting, adding banner, watermark and resizing.)
-        logger.info(f"🎞️ Loading video: {video_file_path}")
+        logger.info(f" Loading video: {video_file_path}")
         videoclip = VideoFileClip(video_file_path)
 
         # Intro and Outro logo
@@ -103,9 +103,9 @@ def process_video_task(video_id: str, temp_file_path: str):
             logo_s3_key = "resources/logo720.png"
             
             if not os.path.exists(logo_local):
-                logger.info(f"📥 Downloading logo from S3: {logo_s3_key}")
+                logger.info(f" Downloading logo from S3: {logo_s3_key}")
                 if not storage_s3.download_file_sync(logo_s3_key, logo_local):
-                    logger.warning("⚠️ Logo not found in S3, creating temporary")
+                    logger.warning(" Logo not found in S3, creating temporary")
                     from PIL import Image, ImageDraw, ImageFont
                     img = Image.new('RGBA', (160, 50), (0, 0, 0, 0))
                     draw = ImageDraw.Draw(img)
@@ -115,13 +115,13 @@ def process_video_task(video_id: str, temp_file_path: str):
                         font = ImageFont.load_default()
                     draw.text((10, 15), "ANB Video", fill=(255, 255, 255, 255), font=font)
                     img.save(logo_local)
-                    logger.info("✅ Temporary logo created")
+                    logger.info(" Temporary logo created")
             
             logo_path = Path(logo_local)
         else:
             logo_path = Path(settings.RES_PATH) / "logo720.png"
         
-        logger.info(f"🎨 Using logo: {logo_path}")
+        logger.info(f" Using logo: {logo_path}")
 
         # Determine durations
         video_duration = video.duration_seconds if video.duration_seconds <= 30 else 30
@@ -137,26 +137,26 @@ def process_video_task(video_id: str, temp_file_path: str):
         # Trim video if needed
         if video.duration_seconds > 30:
             videoclip = videoclip.subclipped(0, 30)
-            logger.info("✂️ Video trimmed to 30s")
+            logger.info(" Video trimmed to 30s")
 
-        # ✅ FIX CRÍTICO: Redimensionar a 720p (NO 1080p)
-        logger.info(f"📐 Original size: {videoclip.size}")
+        #  FIX CRÍTICO: Redimensionar a 720p (NO 1080p)
+        logger.info(f" Original size: {videoclip.size}")
         
         # Usar height=720 para mantener aspect ratio y asegurar 720p
         videoclip = videoclip.resized(height=720)
         
         # Verificar que width es par
         width, height = videoclip.size
-        logger.info(f"🔍 After resize: {width}x{height}")
+        logger.info(f" After resize: {width}x{height}")
         
         if width % 2 != 0:
             width = width - 1
             videoclip = videoclip.resized((width, height))
-            logger.warning(f"⚠️ Adjusted width to even: {width}")
+            logger.warning(f" Adjusted width to even: {width}")
         
         # Aplicar fade DESPUÉS del resize
         videoclip = videoclip.with_effects([vfx.CrossFadeIn(watermark_fadein)])
-        logger.info(f"✅ Video effects applied. Final size: {videoclip.size}")
+        logger.info(f" Video effects applied. Final size: {videoclip.size}")
 
         # Watermark (positioned at 50% from top, centered horizontally)
         watermark = (ImageClip(str(logo_path))
@@ -175,13 +175,13 @@ def process_video_task(video_id: str, temp_file_path: str):
               .with_start(intro_duration + video_duration))
 
         # Composite all clips
-        logger.info("🎬 Compositing clips...")
+        logger.info(" Compositing clips...")
         final_clip = CompositeVideoClip([
             intro_logo,
             videoclip.with_start(intro_duration),
             watermark,
             outro_logo
-        ], size=(width, height))  # ✅ Forzar tamaño exacto
+        ], size=(width, height))  #  Forzar tamaño exacto
 
         # Remove audio
         final_clip = final_clip.without_audio()
@@ -193,9 +193,9 @@ def process_video_task(video_id: str, temp_file_path: str):
             os.makedirs(settings.TEMP_PATH, exist_ok=True)
             local_temp_output = f"{settings.TEMP_PATH}/{video_id}_processed.mp4"
             
-            logger.info(f"🎬 Rendering to: {local_temp_output}")
+            logger.info(f" Rendering to: {local_temp_output}")
             
-            # ✅ FIX: Forzar pixel format para máxima compatibilidad
+            #  FIX: Forzar pixel format para máxima compatibilidad
             try:
                 final_clip.write_videofile(
                     local_temp_output,
@@ -206,23 +206,23 @@ def process_video_task(video_id: str, temp_file_path: str):
                     bitrate='2000k',
                     audio=False,
                     logger=None,
-                    ffmpeg_params=['-pix_fmt', 'yuv420p'] # ✅ CRÍTICO
+                    ffmpeg_params=['-pix_fmt', 'yuv420p'] #  CRÍTICO
                 )
             except Exception as e:
-                logger.error(f"❌ MoviePy render failed: {str(e)}")
+                logger.error(f" MoviePy render failed: {str(e)}")
                 raise
             
-            logger.info(f"✅ Video rendered")
+            logger.info(f" Video rendered")
             
-            # ✅ Cerrar clips ANTES de validación
+            #  Cerrar clips ANTES de validación
             try:
                 videoclip.close()
                 final_clip.close()
-                logger.info("✅ Moviepy resources closed")
+                logger.info(" Moviepy resources closed")
             except Exception as e:
-                logger.warning(f"⚠️ Error closing clips: {e}")
+                logger.warning(f" Error closing clips: {e}")
             
-            # ✅ Esperar a que el archivo se escriba completamente
+            #  Esperar a que el archivo se escriba completamente
             time.sleep(1)
             
             # Verificar existencia
@@ -230,20 +230,20 @@ def process_video_task(video_id: str, temp_file_path: str):
                 raise Exception(f"Rendered file not found: {local_temp_output}")
             
             output_size = os.path.getsize(local_temp_output)
-            logger.info(f"✅ File size: {output_size / (1024*1024):.2f} MB")
+            logger.info(f" File size: {output_size / (1024*1024):.2f} MB")
             
             if output_size < 100000:
                 raise Exception(f"Rendered file too small: {output_size} bytes")
             
-            # ✅ Validar video LOCAL antes de subir
-            logger.info(f"🔍 Validating LOCAL video BEFORE upload: {local_temp_output}")
+            #  Validar video LOCAL antes de subir
+            logger.info(f" Validating LOCAL video BEFORE upload: {local_temp_output}")
             try:
                 # Test 1: FFprobe
                 cmd = ['ffprobe', '-v', 'error', '-show_format', '-show_streams', local_temp_output]
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
                 
                 if result.returncode != 0:
-                    logger.error(f"❌ FFprobe FAILED: {result.stderr}")
+                    logger.error(f" FFprobe FAILED: {result.stderr}")
                     raise Exception(f"Local video CORRUPTED: {result.stderr}")
                 
                 # Test 2: Extraer primer frame
@@ -257,24 +257,24 @@ def process_video_task(video_id: str, temp_file_path: str):
                 result_frame = subprocess.run(cmd_frame, capture_output=True, text=True, timeout=10)
                 
                 if result_frame.returncode != 0:
-                    logger.error(f"❌ Cannot extract frame: {result_frame.stderr}")
+                    logger.error(f" Cannot extract frame: {result_frame.stderr}")
                     raise Exception("Local video cannot be decoded - CORRUPTED")
                 
                 if os.path.exists(test_frame) and os.path.getsize(test_frame) > 1000:
                     os.remove(test_frame)
-                    logger.info("✅ Local video CAN be decoded - frame extracted")
+                    logger.info(" Local video CAN be decoded - frame extracted")
                 else:
                     raise Exception("Extracted frame is empty - CORRUPTED")
                 
-                logger.info(f"✅✅ LOCAL video validation PASSED")
+                logger.info(f" LOCAL video validation PASSED")
                 
             except subprocess.TimeoutExpired:
                 raise Exception("Validation timeout - likely CORRUPTED")
             except Exception as e:
-                logger.error(f"❌❌ LOCAL VIDEO IS CORRUPTED: {str(e)}")
+                logger.error(f" LOCAL VIDEO IS CORRUPTED: {str(e)}")
                 corrupted_copy = f"{settings.TEMP_PATH}/CORRUPTED_{video_id}.mp4"
                 shutil.copy(local_temp_output, corrupted_copy)
-                logger.error(f"💾 Corrupted file saved: {corrupted_copy}")
+                logger.error(f" Corrupted file saved: {corrupted_copy}")
                 raise Exception(f"Video rendering FAILED: {str(e)}")
             
             # Upload to S3
@@ -285,18 +285,18 @@ def process_video_task(video_id: str, temp_file_path: str):
                 raise Exception("Failed to upload to S3")
             
             processed_file_path = s3_processed_key
-            logger.info(f"✅ Uploaded to S3: {s3_processed_key}")
+            logger.info(f" Uploaded to S3: {s3_processed_key}")
             
-            # ✅ Verificar archivo subido
-            logger.info(f"🔍 Verifying uploaded file in S3...")
+            #  Verificar archivo subido
+            logger.info(f" Verifying uploaded file in S3...")
             temp_download = f"{settings.TEMP_PATH}/{video_id}_verify.mp4"
             
             if storage_s3.download_file_sync(s3_processed_key, temp_download):
                 verify_size = os.path.getsize(temp_download)
-                logger.info(f"📦 Downloaded size from S3: {verify_size / (1024*1024):.2f} MB")
+                logger.info(f" Downloaded size from S3: {verify_size / (1024*1024):.2f} MB")
                 
                 if verify_size != output_size:
-                    logger.error(f"❌ SIZE MISMATCH! Original: {output_size}, S3: {verify_size}")
+                    logger.error(f" SIZE MISMATCH! Original: {output_size}, S3: {verify_size}")
                     raise Exception(f"S3 upload corrupted - size mismatch")
                 
                 # Validar con ffprobe
@@ -304,13 +304,13 @@ def process_video_task(video_id: str, temp_file_path: str):
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
                 
                 if result.returncode != 0:
-                    logger.error(f"❌ S3 file is CORRUPTED: {result.stderr}")
+                    logger.error(f" S3 file is CORRUPTED: {result.stderr}")
                     raise Exception("S3 upload corrupted the file")
                 
-                logger.info(f"✅✅ S3 file verification PASSED")
+                logger.info(f" S3 file verification PASSED")
                 os.remove(temp_download)
             else:
-                logger.warning("⚠️ Could not verify S3 upload")
+                logger.warning(" Could not verify S3 upload")
             
         else:
             # Para NFS
@@ -320,35 +320,35 @@ def process_video_task(video_id: str, temp_file_path: str):
             
             processed_file_path = processed_folder / temp_path.name
             
-            logger.info(f"🎬 Rendering to: {processed_file_path}")
+            logger.info(f" Rendering to: {processed_file_path}")
             final_clip.write_videofile(str(processed_file_path))
-            logger.info("✅ Video rendered")
+            logger.info(" Video rendered")
             
             videoclip.close()
             final_clip.close()
-            logger.info("✅ Moviepy resources closed")
+            logger.info(" Moviepy resources closed")
         
         # Update database
         video.file_path = str(processed_file_path)
         video.status = "processed"
         db.commit()
-        logger.info("✅ Database updated")
+        logger.info(" Database updated")
         
         # Clean up temp files
         if settings.STORAGE_TYPE == "s3":
             if local_temp_input and os.path.exists(local_temp_input):
                 os.remove(local_temp_input)
-                logger.info(f"🧹 Cleaned: {local_temp_input}")
+                logger.info(f" Cleaned: {local_temp_input}")
             if local_temp_output and os.path.exists(local_temp_output):
                 os.remove(local_temp_output)
-                logger.info(f"🧹 Cleaned: {local_temp_output}")
+                logger.info(f" Cleaned: {local_temp_output}")
         else:
             temp_path = Path(temp_file_path)
             if temp_path.exists():
                 temp_path.unlink()
-                logger.info(f"🧹 Cleaned: {temp_file_path}")
+                logger.info(f" Cleaned: {temp_file_path}")
         
-        logger.info(f"✅✅✅ Video {video_id} processed successfully!")
+        logger.info(f" Video {video_id} processed successfully!")
         
         return {
             "status": "success",
@@ -358,7 +358,7 @@ def process_video_task(video_id: str, temp_file_path: str):
         }
         
     except Exception as e:
-        logger.error(f"❌ ERROR: {str(e)}")
+        logger.error(f" ERROR: {str(e)}")
         
         if video:
             video.status = "failed"
@@ -369,7 +369,7 @@ def process_video_task(video_id: str, temp_file_path: str):
                 if temp_file and os.path.exists(temp_file):
                     try:
                         os.remove(temp_file)
-                        logger.info(f"🧹 Cleaned: {temp_file}")
+                        logger.info(f" Cleaned: {temp_file}")
                     except:
                         pass
         
