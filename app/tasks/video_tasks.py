@@ -167,74 +167,136 @@ def process_video_task(video_id: str, temp_file_path: str):
         ])
 
         # Remove audio
-        final_clip = final_clip.with_audio(None)
+        final_clip = final_clip.without_audio(None)
         logger.info(" Audio removed")
+        logger.info(f"📊 Final clip FPS: {final_clip.fps}, Duration: {final_clip.duration}s")
 
         # PASO 4: Export
         if settings.STORAGE_TYPE == "s3":
             os.makedirs(settings.TEMP_PATH, exist_ok=True)
             local_temp_output = f"{settings.TEMP_PATH}/{video_id}_processed.mp4"
             
-            logger.info(f" Rendering to: {local_temp_output}")
+            logger.info(f"🎬 Rendering to: {local_temp_output}")
             
-            #  FIX: Usar parámetros simples como en versión original
-            final_clip.write_videofile(
-                local_temp_output,
-                codec='libx264',
-                audio_codec='aac'
-                #  NO usar logger=None, threads, preset
-            )
+            # ✅ FIX: Simplificar parámetros de renderizado
+            try:
+                final_clip.write_videofile(
+                    local_temp_output,
+                    codec='libx264',
+                    fps=30,
+                    preset='ultrafast',  # ✅ Más rápido, menos compresión
+                    threads=4,
+                    bitrate='2000k',
+                    audio=False,  # ✅ Explícito: sin audio
+                    verbose=False,
+                    logger=None
+                )
+            except Exception as e:
+                logger.error(f"❌ MoviePy render failed: {str(e)}")
+                raise
             
-            logger.info(f" Video rendered")
+            logger.info(f"✅ Video rendered")
             
-            #  FIX: Cerrar clips ANTES de validar
-            videoclip.close()
-            final_clip.close()
-            logger.info(" Moviepy resources closed")
+            # ✅ Cerrar clips ANTES de cualquier validación
+            try:
+                videoclip.close()
+                final_clip.close()
+                logger.info("✅ Moviepy resources closed")
+            except Exception as e:
+                logger.warning(f"⚠️ Error closing clips: {e}")
             
-            # Verificar tamaño
+            # ✅ CRÍTICO: Esperar 1 segundo para que el archivo se escriba completamente
+            import time
+            time.sleep(1)
+            
+            # Verificar que el archivo existe
             if not os.path.exists(local_temp_output):
                 raise Exception(f"Rendered file not found: {local_temp_output}")
             
             output_size = os.path.getsize(local_temp_output)
-            logger.info(f" File size: {output_size / (1024*1024):.2f} MB")
+            logger.info(f"✅ File size: {output_size / (1024*1024):.2f} MB")
             
             if output_size < 100000:  # 100KB
                 raise Exception(f"Rendered file too small: {output_size} bytes")
             
-            #  Validar con FFprobe (DESPUÉS de cerrar clips)
-            logger.info(f" Validating processed video: {local_temp_output}")
+            # ✅ SUPER CRÍTICO: Validar el video LOCAL antes de subirlo
+            logger.info(f"🔍 Validating LOCAL video BEFORE upload: {local_temp_output}")
             try:
-                cmd = ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', local_temp_output]
+                # Test 1: FFprobe
+                cmd = ['ffprobe', '-v', 'error', '-show_format', '-show_streams', local_temp_output]
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
                 
                 if result.returncode != 0:
-                    raise Exception(f"FFprobe failed: {result.stderr}")
+                    logger.error(f"❌ FFprobe FAILED on local file: {result.stderr}")
+                    raise Exception(f"Local video is CORRUPTED before upload: {result.stderr}")
                 
-                data = json.loads(result.stdout)
-                has_video = any(s.get('codec_type') == 'video' for s in data.get('streams', []))
+                # Test 2: Extraer primer frame
+                test_frame = f"{settings.TEMP_PATH}/test_frame.jpg"
+                cmd_frame = [
+                    'ffmpeg', '-i', local_temp_output, 
+                    '-frames:v', '1', 
+                    '-f', 'image2', test_frame,
+                    '-y'
+                ]
+                result_frame = subprocess.run(cmd_frame, capture_output=True, text=True, timeout=10)
                 
-                if not has_video:
-                    raise Exception("No video stream found")
+                if result_frame.returncode != 0:
+                    logger.error(f"❌ Cannot extract frame from local video: {result_frame.stderr}")
+                    raise Exception("Local video cannot be decoded - CORRUPTED")
                 
-                duration = float(data.get('format', {}).get('duration', 0))
-                if duration <= 0:
-                    raise Exception("Invalid duration")
+                if os.path.exists(test_frame) and os.path.getsize(test_frame) > 1000:
+                    os.remove(test_frame)
+                    logger.info("✅ Local video CAN be decoded - frame extracted successfully")
+                else:
+                    raise Exception("Extracted frame is empty - video CORRUPTED")
                 
-                logger.info(f" Processed video is VALID - Duration: {duration}s")
+                logger.info(f"✅✅ LOCAL video validation PASSED")
                 
+            except subprocess.TimeoutExpired:
+                raise Exception("Local video validation timeout - likely CORRUPTED")
             except Exception as e:
-                raise Exception(f"Validation FAILED: {str(e)}")
+                logger.error(f"❌❌ LOCAL VIDEO IS CORRUPTED: {str(e)}")
+                # Guardar copia del archivo corrupto para debug
+                corrupted_copy = f"{settings.TEMP_PATH}/CORRUPTED_{video_id}.mp4"
+                import shutil
+                shutil.copy(local_temp_output, corrupted_copy)
+                logger.error(f"💾 Corrupted file saved for debug: {corrupted_copy}")
+                raise Exception(f"Video rendering produced CORRUPTED file: {str(e)}")
             
             # Upload to S3
             s3_processed_key = f"processed/{video_id}.mp4"
-            logger.info(f" Uploading to S3: {s3_processed_key}")
+            logger.info(f"📤 Uploading VALIDATED video to S3: {s3_processed_key}")
             
             if not storage_s3.upload_file_sync(local_temp_output, s3_processed_key):
                 raise Exception("Failed to upload to S3")
             
             processed_file_path = s3_processed_key
-            logger.info(f" Uploaded to S3: {s3_processed_key}")
+            logger.info(f"✅ Uploaded to S3: {s3_processed_key}")
+            
+            # ✅ CRÍTICO: Verificar que el archivo subido NO está corrupto
+            logger.info(f"🔍 Verifying uploaded file in S3...")
+            temp_download = f"{settings.TEMP_PATH}/{video_id}_verify.mp4"
+            
+            if storage_s3.download_file_sync(s3_processed_key, temp_download):
+                verify_size = os.path.getsize(temp_download)
+                logger.info(f"📦 Downloaded size from S3: {verify_size / (1024*1024):.2f} MB")
+                
+                if verify_size != output_size:
+                    logger.error(f"❌ SIZE MISMATCH! Original: {output_size}, S3: {verify_size}")
+                    raise Exception(f"S3 upload corrupted file - size mismatch")
+                
+                # Validar con ffprobe
+                cmd = ['ffprobe', '-v', 'error', '-show_format', temp_download]
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                
+                if result.returncode != 0:
+                    logger.error(f"❌ S3 file is CORRUPTED: {result.stderr}")
+                    raise Exception("S3 upload corrupted the file")
+                
+                logger.info(f"✅✅ S3 file verification PASSED")
+                os.remove(temp_download)
+            else:
+                logger.warning("⚠️ Could not verify S3 upload")
             
         else:
             # Para NFS (versión original)
