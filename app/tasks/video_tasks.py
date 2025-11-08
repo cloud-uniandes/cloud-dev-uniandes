@@ -138,7 +138,7 @@ def process_video_task(video_id: str, temp_file_path: str):
             videoclip = videoclip.subclipped(0, 30)
             logger.info(" Video trimmed to 30s")
 
-        videoclip = videoclip.with_effects([vfx.CrossFadeIn(watermark_fadein)]).resized((1280,1080))
+        videoclip = videoclip.with_effects([vfx.CrossFadeIn(watermark_fadein)]).resized((1280,720))
         logger.info(" Video resized to 1280x1080")
 
         # Watermark (positioned at 50% from top, centered horizontally)
@@ -184,11 +184,10 @@ def process_video_task(video_id: str, temp_file_path: str):
                     local_temp_output,
                     codec='libx264',
                     fps=30,
-                    preset='ultrafast',  # ✅ Más rápido, menos compresión
+                    preset='ultrafast',
                     threads=4,
                     bitrate='2000k',
-                    audio=False,  # ✅ Explícito: sin audio
-                    verbose=False,
+                    audio=False,  
                     logger=None
                 )
             except Exception as e:
