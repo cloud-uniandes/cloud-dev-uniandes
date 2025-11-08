@@ -1,0 +1,224 @@
+@startuml sequence
+!theme plain
+
+skinparam backgroundColor white
+skinparam sequence {
+    ArrowColor black
+    ActorBorderColor black
+    LifeLineBorderColor black
+    ParticipantBorderColor black
+    ParticipantBackgroundColor #E8F4F8
+    ActorBackgroundColor #FFE5CC
+}
+
+title Secuencia de Upload y Procesamiento con S3
+
+actor "Usuario" as user
+participant "Load Balancer\n(ALB)" as alb
+participant "FastAPI\n(Backend EC2)" as api
+participant "S3 Storage\nClient" as s3client
+database "S3 Bucket\nanb-video-storage" as s3
+database "RDS\nPostgreSQL" as db
+queue "RabbitMQ\n(Celery)" as mq
+participant "Celery Worker\n(Worker EC2)" as worker
+database "Redis" as redis
+
+== Fase 1: Upload de Video ==
+
+user -> alb: POST /api/v1/videos/upload\nAuthorization: Bearer token\nContent-Type: multipart/form-data
+activate alb
+
+alb -> api: Forward request
+activate api
+
+api -> api: Validar JWT Token
+
+api -> api: Validar video file:\n- Tamaño < 100MB\n- Formato MP4\n- Duración con FFprobe
+
+alt Video válido
+
+    api -> s3client: save_file(file_content,\nfilename="UUID.mp4")
+    activate s3client
+    
+    s3client -> s3: upload_fileobj(\nBytesIO(file_content),\nkey="uploads/UUID.mp4",\nContentType="video/mp4")
+    activate s3
+    s3 --> s3client: Upload OK
+    deactivate s3
+    
+    s3client --> api: s3_key: "uploads/UUID.mp4"
+    deactivate s3client
+    
+    api -> db: INSERT INTO videos\n(id=UUID,\ntitle="My Video",\nfile_path="uploads/UUID.mp4",\nstatus="uploaded",\nuser_id=user_id)
+    activate db
+    db --> api: Video created
+    deactivate db
+    
+    api -> mq: Send Celery task:\nprocess_video_task(\nvideo_id=UUID,\ntemp_file_path="uploads/UUID.mp4")
+    activate mq
+    mq --> api: Task queued (task_id)
+    deactivate mq
+    
+    api --> alb: 202 Accepted\n{"id": "UUID",\n"status": "uploaded",\n"message": "Processing started"}
+    deactivate api
+    
+    alb --> user: JSON response
+    deactivate alb
+
+else Video inválido
+    api --> alb: 400 Bad Request\n{"error": "Invalid video format"}
+    deactivate api
+    alb --> user: Error response
+    deactivate alb
+end
+
+== Fase 2: Procesamiento Asíncrono ==
+
+mq -> worker: Consume task:\nprocess_video_task(video_id, s3_key)
+activate worker
+
+worker -> db: UPDATE videos\nSET status="processing"\nWHERE id=UUID
+activate db
+db --> worker: Updated
+deactivate db
+
+worker -> s3: download_file_sync(\nkey="uploads/UUID.mp4",\nlocal_path="/tmp/anb-temp/UUID_input.mp4")
+activate s3
+s3 --> worker: Video file (binary stream)
+deactivate s3
+
+worker -> worker: Guardar en\n/tmp/anb-temp/UUID_input.mp4
+
+worker -> worker: Validar con FFprobe:\nffprobe -v error\n-show_format UUID_input.mp4
+
+alt Validación OK
+
+    worker -> s3: download_file_sync(\nkey="resources/logo720.png",\nlocal_path="/tmp/anb-temp/logo720.png")
+    activate s3
+    s3 --> worker: Logo PNG
+    deactivate s3
+    
+    worker -> worker: MoviePy Processing:\n1. Load VideoFileClip(UUID_input.mp4)\n2. Trim to 30s if needed\n3. Resize to 720p (height=720)\n4. Add intro logo (2.5s)\n5. Add watermark (fade 2s)\n6. Add outro logo (2.5s)\n7. Remove audio\n8. Composite clips
+    
+    worker -> worker: Render video:\nwrite_videofile(\n"/tmp/anb-temp/UUID_processed.mp4",\ncodec="libx264",\nfps=30,\nffmpeg_params=["-pix_fmt", "yuv420p"])
+    
+    worker -> worker: Validar video local:\n1. FFprobe check\n2. Extract test frame
+    
+    alt Video procesado válido
+    
+        worker -> s3: upload_file_sync(\nlocal_path="/tmp/UUID_processed.mp4",\ns3_key="processed/UUID.mp4",\nContentType="video/mp4")
+        activate s3
+        s3 --> worker: Upload successful
+        deactivate s3
+        
+        worker -> s3: download_file_sync(\nkey="processed/UUID.mp4",\nlocal_path="/tmp/UUID_verify.mp4")
+        activate s3
+        s3 --> worker: Download for verification
+        deactivate s3
+        
+        worker -> worker: Verificar integridad:\n- Comparar tamaños\n- FFprobe validation
+        
+        alt S3 file válido
+        
+            worker -> db: UPDATE videos SET\nstatus="processed",\nfile_path="processed/UUID.mp4",\nduration_seconds=25\nWHERE id=UUID
+            activate db
+            db --> worker: Updated
+            deactivate db
+            
+            worker -> redis: SET result:task_id\n{"status": "success",\n"video_id": "UUID"}
+            activate redis
+            redis --> worker: OK
+            deactivate redis
+            
+            worker -> worker: Limpiar archivos temporales:\nrm /tmp/anb-temp/UUID_*
+            
+            worker --> mq: Task SUCCESS
+            deactivate worker
+        
+        else S3 file corrupto
+        
+            worker -> db: UPDATE videos SET\nstatus="failed",\nerror_message="S3 upload corrupted"\nWHERE id=UUID
+            activate db
+            db --> worker: Updated
+            deactivate db
+            
+            worker --> mq: Task FAILED
+            deactivate worker
+        end
+    
+    else Video procesado corrupto
+    
+        worker -> worker: Guardar copia debug:\n/tmp/CORRUPTED_UUID.mp4
+        
+        worker -> db: UPDATE videos SET\nstatus="failed",\nerror_message="Rendering failed"\nWHERE id=UUID
+        activate db
+        db --> worker: Updated
+        deactivate db
+        
+        worker --> mq: Task FAILED
+        deactivate worker
+    end
+
+else Validación FFprobe falló
+
+    worker -> db: UPDATE videos SET\nstatus="failed",\nerror_message="Invalid video format"\nWHERE id=UUID
+    activate db
+    db --> worker: Updated
+    deactivate db
+    
+    worker --> mq: Task FAILED
+    deactivate worker
+end
+
+== Fase 3: Consulta de Estado ==
+
+user -> alb: GET /api/v1/videos/UUID\nAuthorization: Bearer token
+activate alb
+
+alb -> api: Forward request
+activate api
+
+api -> db: SELECT * FROM videos\nWHERE id=UUID\nAND user_id=current_user
+activate db
+db --> api: Video data:\n{"id": "UUID",\n"status": "processed",\n"file_path": "processed/UUID.mp4",\n"duration_seconds": 25}
+deactivate db
+
+alt Status = "processed"
+
+    api -> s3client: get_file_url(\nkey="processed/UUID.mp4",\nexpires_in=3600)
+    activate s3client
+    
+    s3client -> s3: generate_presigned_url(\nClientMethod="get_object",\nParams={"Bucket": "anb-video-storage",\n"Key": "processed/UUID.mp4"},\nExpiresIn=3600)
+    activate s3
+    s3 --> s3client: Presigned URL:\nhttps://s3.amazonaws.com/\nanb-video-storage/\nprocessed/UUID.mp4?\nAWSAccessKeyId=...\n&Expires=...\n&Signature=...
+    deactivate s3
+    
+    s3client --> api: Presigned URL
+    deactivate s3client
+    
+    api --> alb: 200 OK\n{"id": "UUID",\n"title": "My Video",\n"status": "processed",\n"url": "https://s3.../UUID.mp4?...",\n"duration_seconds": 25}
+    deactivate api
+    
+    alb --> user: JSON response with URL
+    deactivate alb
+    
+    user -> s3: GET presigned URL
+    activate s3
+    s3 --> user: Video stream (bytes)\nContent-Type: video/mp4
+    deactivate s3
+
+else Status = "processing"
+
+    api --> alb: 200 OK\n{"id": "UUID",\n"status": "processing",\n"message": "Video being processed"}
+    deactivate api
+    alb --> user: JSON response
+    deactivate alb
+
+else Status = "failed"
+
+    api --> alb: 200 OK\n{"id": "UUID",\n"status": "failed",\n"error": "Rendering failed"}
+    deactivate api
+    alb --> user: JSON response
+    deactivate alb
+end
+
+@enduml

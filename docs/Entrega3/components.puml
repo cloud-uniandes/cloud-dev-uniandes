@@ -1,0 +1,160 @@
+@startuml components_aws
+!theme cerulean-outline
+skinparam backgroundColor white
+skinparam shadowing false
+
+skinparam defaultFontColor black
+skinparam defaultFontSize 12
+skinparam defaultFontStyle bold
+
+skinparam component {
+    BorderColor black
+    BorderThickness 2
+    FontColor black
+}
+
+skinparam rectangle {
+    BorderColor black
+    BorderThickness 2
+    FontColor black
+}
+
+skinparam database {
+    BorderColor black
+    BorderThickness 2
+    FontColor black
+}
+
+skinparam storage {
+    BorderColor black
+    BorderThickness 2
+    FontColor black
+}
+
+skinparam queue {
+    BorderColor black
+    BorderThickness 2
+    FontColor black
+}
+
+title **Diagrama de Componentes - Sistema ANB con AWS**\n//Arquitectura Escalable con S3//
+
+left to right direction
+
+' ============================================
+' CAPAS
+' ============================================
+actor "Usuario" as user #LightBlue
+
+rectangle "**Cliente**" #E3F2FD {
+    component "Navegador Web\nChrome/Firefox" as browser
+}
+
+rectangle "**Load Balancer**" #C8E6C9 {
+    component "AWS ELB\nHTTPS → HTTP" as alb
+}
+
+rectangle "**Backend API (EC2 Instances)**" #FFF9C4 {
+    component "Nginx\nProxy + Static" as nginx
+    component "FastAPI\nREST API" as fastapi
+    
+    rectangle "API Modules" #FFFDE7 {
+        component "Auth\nJWT" as auth
+        component "Videos\nUpload/List" as videos
+        component "Public\nRankings" as public
+    }
+    
+    rectangle "Storage Abstraction" #FFF3E0 {
+        component "S3Storage\nboto3 client" as s3storage
+        component "File Service\nInterface" as fileservice
+    }
+}
+
+rectangle "**Worker Instance (EC2)**" #FFCCBC {
+    component "Celery Worker\nBackground Jobs" as celery
+    component "Video Tasks\nprocess_video_task" as tasks
+    component "MoviePy + FFmpeg\nProcessing" as moviepy
+}
+
+rectangle "**AWS Services**" #E1BEE7 {
+    storage "S3 Bucket\nanb-video-storage-2025" as s3 {
+        folder "uploads/\nVideos originales" as s3_uploads
+        folder "processed/\nVideos procesados" as s3_processed
+        folder "resources/\nLogos, assets" as s3_resources
+    }
+    
+    database "RDS PostgreSQL\nUsers, Videos, Votes" as rds
+    
+    database "ElastiCache Redis\nTask Results" as redis
+    
+    queue "RabbitMQ\nTask Queue" as mq
+}
+
+' ============================================
+' RELACIONES
+' ============================================
+
+user -[#black,bold]-> browser : <color:black>**Interacción**</color>
+browser -[#black,bold]-> alb : <color:black>**HTTPS**</color>
+alb -[#black,bold]-> nginx : <color:black>**HTTP/80**</color>
+
+nginx -[#black,bold]-> fastapi : <color:black>**Proxy /api**</color>
+
+fastapi -[#black,bold]-> auth : <color:black>**Authenticate**</color>
+fastapi -[#black,bold]-> videos : <color:black>**CRUD**</color>
+fastapi -[#black,bold]-> public : <color:black>**Query**</color>
+
+videos -[#black,bold]-> fileservice : <color:black>**save_file()**</color>
+fileservice -[#black,bold]-> s3storage : <color:black>**upload_fileobj()**</color>
+s3storage -[#black,bold]-> s3 : <color:black>**boto3 API**</color>
+
+videos -[#black,bold]-> rds : <color:black>**asyncpg**\nINSERT/UPDATE</color>
+videos -[#black,bold]-> mq : <color:black>**Publish Task**</color>
+
+celery -[#black,bold]-> mq : <color:black>**Consume Task**</color>
+celery -[#black,bold]-> tasks : <color:black>**Execute**</color>
+tasks -[#black,bold]-> moviepy : <color:black>**Process**</color>
+
+tasks -[#black,bold]-> s3 : <color:black>**Download/Upload**\nboto3 sync</color>
+tasks -[#black,bold]-> rds : <color:black>**Update Status**</color>
+tasks -[#black,bold]-> redis : <color:black>**Store Result**</color>
+
+fastapi -[#black,bold]-> redis : <color:black>**Check Status**</color>
+
+' ============================================
+' NOTAS
+' ============================================
+
+note right of s3storage
+    <color:black>
+    **S3Storage:**
+    • IAM Role authentication
+    • Async upload/download
+    • Presigned URLs para descarga
+    • ContentType: video/mp4
+    </color>
+end note
+
+note bottom of tasks
+    <color:black>
+    **Video Processing:**
+    1. Download de S3 → /tmp
+    2. MoviePy: resize 720p
+    3. FFmpeg: H.264 + yuv420p
+    4. Upload a S3 processed/
+    5. Update DB status
+    </color>
+end note
+
+legend right
+    <color:black>
+    |= **Color** |= **Capa** |
+    | <back:#E3F2FD>    </back> | Cliente |
+    | <back:#C8E6C9>    </back> | Load Balancer |
+    | <back:#FFF9C4>    </back> | Backend API |
+    | <back:#FFCCBC>    </back> | Worker |
+    | <back:#E1BEE7>    </back> | AWS Services |
+    </color>
+endlegend
+
+@enduml

@@ -1,0 +1,180 @@
+@startuml deployment_aws
+skinparam backgroundColor white
+skinparam shadowing false
+
+skinparam defaultFontColor black
+skinparam defaultFontSize 11
+skinparam defaultFontStyle bold
+
+skinparam node {
+    BorderColor black
+    BorderThickness 2
+    FontColor black
+}
+
+skinparam rectangle {
+    BorderColor black
+    BorderThickness 2
+    FontColor black
+}
+
+skinparam cloud {
+    BorderColor black
+    BorderThickness 2
+    FontColor black
+}
+
+skinparam database {
+    BorderColor black
+    BorderThickness 2
+    FontColor black
+}
+
+skinparam storage {
+    BorderColor black
+    BorderThickness 2
+    FontColor black
+}
+
+title **Diagrama de Despliegue - AWS Infrastructure**\n//Sistema ANB con S3 y Auto Scaling//
+
+actor "Usuario" as user #LightBlue
+
+cloud "**AWS Region: us-east-1**" as aws #E8F5E9 {
+    
+    rectangle "**VPC (Virtual Private Cloud)**" as vpc #C8E6C9 {
+        
+        rectangle "**Public Subnet 1a**" as subnet1 #FFF59D {
+            node "**Application Load Balancer**\nELB" as alb #81C784 {
+                component "Listener HTTPS:443" as listener_https
+                component "Listener HTTP:80" as listener_http
+            }
+        }
+        
+        rectangle "**Private Subnet 1a**" as subnet2 #FFE0B2 {
+            node "**EC2 Backend 1**\nt3.medium\nUbuntu 22.04" as ec2_1 #FFAB91 {
+                component "Docker Engine" as docker1
+                component "Container: anb_nginx" as nginx1
+                component "Container: anb_app" as app1
+            }
+            
+            node "**EC2 Backend 2**\nt3.medium\nUbuntu 22.04" as ec2_2 #FFAB91 {
+                component "Docker Engine" as docker2
+                component "Container: anb_nginx" as nginx2
+                component "Container: anb_app" as app2
+            }
+        }
+        
+        rectangle "**Private Subnet 1b**" as subnet3 #E1BEE7 {
+            node "**EC2 Worker**\nt3.large\nUbuntu 22.04" as worker #CE93D8 {
+                component "Docker Engine" as docker_worker
+                component "Container: celery_worker" as celery
+                folder "/tmp/anb-temp\nProcessing cache" as tmp
+            }
+            
+            node "**EC2 RabbitMQ**\nt3.small\nUbuntu 22.04" as mq_node #FFB74D {
+                component "Container: anb_rabbitmq" as mq
+            }
+        }
+        
+        rectangle "**Database Subnet Group**" as db_subnet #90CAF9 {
+            database "**RDS PostgreSQL 16**\ndb.t3.micro\nMulti-AZ" as rds
+        }
+        
+        rectangle "**Cache Subnet**" as cache_subnet #EF5350 {
+            database "**ElastiCache Redis**\ncache.t3.micro" as redis
+        }
+    }
+    
+    storage "**Amazon S3**\nanb-video-storage-2025\nRegion: us-east-1" as s3 #64B5F6 {
+        folder "uploads/\nOriginal videos" as s3_uploads
+        folder "processed/\nProcessed videos" as s3_processed
+        folder "resources/\nLogos, assets" as s3_resources
+    }
+}
+
+' ============================================
+' RELACIONES
+' ============================================
+
+user -[#black,bold]-> alb : <color:black>**HTTPS/443**\nInternet</color>
+
+alb -[#black,bold]-> ec2_1 : <color:black>**HTTP/80**\nTarget Group</color>
+alb -[#black,bold]-> ec2_2 : <color:black>**HTTP/80**\nTarget Group</color>
+
+nginx1 -[#black,bold]-> app1 : <color:black>**Proxy**\nTCP/8000</color>
+nginx2 -[#black,bold]-> app2 : <color:black>**Proxy**\nTCP/8000</color>
+
+app1 -[#black,bold]-> rds : <color:black>**asyncpg**\nTCP/5432</color>
+app2 -[#black,bold]-> rds : <color:black>**asyncpg**\nTCP/5432</color>
+
+app1 -[#black,bold]-> s3 : <color:black>**boto3**\nHTTPS/443</color>
+app2 -[#black,bold]-> s3 : <color:black>**boto3**\nHTTPS/443</color>
+
+app1 -[#black,bold]-> mq : <color:black>**AMQP**\nTCP/5672</color>
+app2 -[#black,bold]-> mq : <color:black>**AMQP**\nTCP/5672</color>
+
+celery -[#black,bold]-> mq : <color:black>**Consume**\nTCP/5672</color>
+celery -[#black,bold]-> s3 : <color:black>**boto3**\nHTTPS/443</color>
+celery -[#black,bold]-> rds : <color:black>**psycopg2**\nTCP/5432</color>
+celery -[#black,bold]-> redis : <color:black>**Results**\nTCP/6379</color>
+celery -[#black,bold]-> tmp : <color:black>**File I/O**\nLocal disk</color>
+
+' ============================================
+' NOTAS
+' ============================================
+
+note right of alb
+    <color:black>
+    **Load Balancer:**
+    • SSL/TLS termination
+    • Health checks /health
+    • Target: EC2 Backends
+    • Sticky sessions (opcional)
+    </color>
+end note
+
+note bottom of s3
+    <color:black>
+    **S3 Configuration:**
+    • Bucket policy: IAM Roles
+    • Versioning: Enabled
+    • Lifecycle: Delete uploads > 7d
+    • CORS: Enabled para frontend
+    </color>
+end note
+
+note left of rds
+    <color:black>
+    **RDS PostgreSQL:**
+    • Engine: 16.1
+    • Multi-AZ: True
+    • Storage: 20 GB SSD
+    • Backups: 7 days retention
+    • Security Group: Port 5432
+    </color>
+end note
+
+note bottom of worker
+    <color:black>
+    **Worker Instance:**
+    • FFmpeg installed
+    • MoviePy + Pillow
+    • /tmp mount: tmpfs (RAM)
+    • Auto-scaling: Future
+    </color>
+end note
+
+legend bottom left
+    <color:black>
+    |= **Componente** |= **Tipo** |= **Especificaciones** |
+    | Load Balancer | AWS ELB | Application LB (Layer 7) |
+    | Backend EC2 | t3.medium | 2 vCPU, 4 GB RAM |
+    | Worker EC2 | t3.large | 2 vCPU, 8 GB RAM |
+    | RDS | db.t3.micro | PostgreSQL 16, Multi-AZ |
+    | Redis | cache.t3.micro | 1 vCPU, 0.5 GB RAM |
+    | S3 | Standard | Escalable, 99.99% SLA |
+    </color>
+endlegend
+
+@enduml

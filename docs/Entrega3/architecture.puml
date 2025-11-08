@@ -1,0 +1,138 @@
+@startuml architecture_aws
+!theme cerulean-outline
+skinparam backgroundColor white
+skinparam shadowing false
+
+skinparam defaultFontColor black
+skinparam defaultFontSize 11
+skinparam defaultFontStyle bold
+
+skinparam rectangle {
+    BorderColor black
+    BorderThickness 2
+    FontColor black
+}
+
+skinparam cloud {
+    BorderColor black
+    BorderThickness 2
+    FontColor black
+}
+
+skinparam database {
+    BorderColor black
+    BorderThickness 2
+    FontColor black
+}
+
+skinparam storage {
+    BorderColor black
+    BorderThickness 2
+    FontColor black
+}
+
+skinparam component {
+    BorderColor black
+    BorderThickness 2
+    FontColor black
+}
+
+title **Arquitectura AWS - Sistema ANB**\n//Escalabilidad y Alta Disponibilidad//
+
+actor "Usuario" as user #LightBlue
+
+cloud "**AWS Cloud**" as aws #E8F5E9 {
+    
+    rectangle "**Application Load Balancer**" #81C784 {
+        component "ELB\nHTTP/HTTPS" as alb
+    }
+    
+    rectangle "**Auto Scaling Group**" #FFF59D {
+        component "EC2 Instance 1\nBackend REST API\nDocker: FastAPI + Nginx" as ec2_1
+        component "EC2 Instance 2\nBackend REST API\nDocker: FastAPI + Nginx" as ec2_2
+        component "EC2 Instance 3\nBackend REST API\nDocker: FastAPI + Nginx" as ec2_3
+    }
+    
+    rectangle "**Worker Instance**" #FFAB91 {
+        component "EC2 Worker\nDocker: Celery Worker\nFFmpeg + MoviePy" as worker
+    }
+    
+    rectangle "**Storage**" #90CAF9 {
+        storage "S3 Bucket\nanb-video-storage-2025" as s3 {
+            folder "uploads/" as s3_uploads
+            folder "processed/" as s3_processed
+            folder "resources/" as s3_resources
+        }
+    }
+    
+    rectangle "**Database**" #CE93D8 {
+        database "RDS PostgreSQL\nMulti-AZ" as rds
+    }
+    
+    rectangle "**Cache & Queue**" #EF5350 {
+        database "ElastiCache Redis\nResults Backend" as redis
+        component "RabbitMQ\n(EC2 o Amazon MQ)" as rabbitmq
+    }
+}
+
+' ============================================
+' RELACIONES
+' ============================================
+
+user -[#black,bold]-> alb : <color:black>**HTTPS**\nTCP/443</color>
+
+alb -[#black,bold]-> ec2_1 : <color:black>**HTTP**\nTCP/80</color>
+alb -[#black,bold]-> ec2_2 : <color:black>**HTTP**\nTCP/80</color>
+alb -[#black,bold]-> ec2_3 : <color:black>**HTTP**\nTCP/80</color>
+
+ec2_1 -[#black,bold]-> s3 : <color:black>**boto3**\nUpload/Download</color>
+ec2_2 -[#black,bold]-> s3 : <color:black>**boto3**\nUpload/Download</color>
+ec2_3 -[#black,bold]-> s3 : <color:black>**boto3**\nUpload/Download</color>
+
+ec2_1 -[#black,bold]-> rds : <color:black>**asyncpg**\nTCP/5432</color>
+ec2_2 -[#black,bold]-> rds : <color:black>**asyncpg**\nTCP/5432</color>
+ec2_3 -[#black,bold]-> rds : <color:black>**asyncpg**\nTCP/5432</color>
+
+ec2_1 -[#black,bold]-> rabbitmq : <color:black>**AMQP**\nTCP/5672</color>
+ec2_2 -[#black,bold]-> rabbitmq : <color:black>**AMQP**\nTCP/5672</color>
+ec2_3 -[#black,bold]-> rabbitmq : <color:black>**AMQP**\nTCP/5672</color>
+
+worker -[#black,bold]-> rabbitmq : <color:black>**Consume**\nTCP/5672</color>
+worker -[#black,bold]-> s3 : <color:black>**boto3**\nRead/Write</color>
+worker -[#black,bold]-> rds : <color:black>**asyncpg**\nUpdate Status</color>
+worker -[#black,bold]-> redis : <color:black>**Store Results**\nTCP/6379</color>
+
+note right of s3
+    <color:black>
+    **Amazon S3:**
+    • Almacenamiento escalable
+    • Versionado habilitado
+    • Lifecycle policies
+    • IAM Roles (sin credenciales hardcoded)
+    </color>
+end note
+
+note bottom of rds
+    <color:black>
+    **RDS PostgreSQL:**
+    • Multi-AZ (Alta disponibilidad)
+    • Backups automáticos
+    • Read replicas (opcional)
+    • Encriptación en reposo
+    </color>
+end note
+
+legend bottom left
+    <color:black>
+    |= **Componente** |= **Servicio AWS** |= **Función** |
+    | Load Balancer | ELB Application | Distribución de tráfico |
+    | Backend API | EC2 (Auto Scaling) | FastAPI + Nginx |
+    | Worker | EC2 (Worker dedicado) | Celery + FFmpeg |
+    | Storage | S3 | Videos y recursos |
+    | Database | RDS PostgreSQL | Datos relacionales |
+    | Cache | ElastiCache Redis | Resultados de tareas |
+    | Queue | RabbitMQ (EC2/MQ) | Message broker |
+    </color>
+endlegend
+
+@enduml

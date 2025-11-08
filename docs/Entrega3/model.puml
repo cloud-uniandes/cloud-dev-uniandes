@@ -1,0 +1,105 @@
+@startuml data-model-s3
+skinparam linetype ortho
+
+' ============================================
+' USERS TABLE
+' ============================================
+class users {
+    + id: UUID <<PK>>
+    --
+    + email: VARCHAR(255) <<UNIQUE>>
+    + password_hash: VARCHAR(255)
+    + first_name: VARCHAR(100)
+    + last_name: VARCHAR(100)
+    + city: VARCHAR(100)
+    + country: VARCHAR(2)
+    + created_at: TIMESTAMP
+    + updated_at: TIMESTAMP
+}
+
+' ============================================
+' VIDEOS TABLE (ACTUALIZADO PARA S3)
+' ============================================
+class videos {
+    + id: UUID <<PK>>
+    + user_id: UUID <<FK>>
+    --
+    + title: VARCHAR(200)
+    + original_filename: VARCHAR(255)
+    + file_path: VARCHAR(500)
+    + duration_seconds: INTEGER
+    + file_size_bytes: BIGINT
+    + status: ENUM('pending', 'processing', 'processed', 'failed')
+    + is_public: BOOLEAN
+    + votes_count: INTEGER
+    + uploaded_at: TIMESTAMP
+    + processed_at: TIMESTAMP
+    + task_id: VARCHAR(255)
+}
+
+' ============================================
+' VOTES TABLE
+' ============================================
+class votes {
+    + id: UUID <<PK>>
+    + user_id: UUID <<FK>>
+    + video_id: UUID <<FK>>
+    --
+    + voted_at: TIMESTAMP
+    --
+    <<UNIQUE>> (user_id, video_id)
+}
+
+' ============================================
+' RELACIONES
+' ============================================
+users "1" -- "0..*" videos : uploads >
+users "1" -- "0..*" votes : casts >
+videos "1" -- "0..*" votes : receives >
+
+' ============================================
+' ÍNDICES Y CONSTRAINTS
+' ============================================
+note top of users
+  **Índices:**
+  • PRIMARY KEY (id)
+  • UNIQUE INDEX (email)
+  
+  **Validaciones:**
+  • email formato válido
+  • password_hash bcrypt
+  • country ISO-3166-1 alpha-2
+end note
+
+note top of videos
+  **Índices:**
+  • PRIMARY KEY (id)
+  • INDEX (user_id)
+  • INDEX (is_public, votes_count DESC)
+  • INDEX (status)
+  
+  **Cambios para S3:**
+  • file_path ahora almacena S3 keys:
+    - "uploads/UUID.mp4" (original)
+    - "processed/UUID.mp4" (procesado)
+  • NO se almacena ruta local
+  • Acceso mediante presigned URLs
+  
+  **Business Rules:**
+  • Solo videos status='processed'
+    pueden marcarse como públicos
+  • votes_count denormalizado
+end note
+
+note top of votes
+  **Índices:**
+  • PRIMARY KEY (id)
+  • UNIQUE INDEX (user_id, video_id)
+  • INDEX (video_id)
+  
+  **Business Rules:**
+  • Usuario no vota su propio video
+  • Solo videos públicos (is_public=TRUE)
+end note
+
+@enduml

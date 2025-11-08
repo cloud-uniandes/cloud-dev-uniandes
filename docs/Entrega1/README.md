@@ -12,7 +12,7 @@ El sistema utiliza un modelo relacional con **3 entidades principales** que gest
 
 ---
 
-### Entidades y Atributos
+### Entidades y AtributosV
 
 #### **1. Users (Usuarios)**
 

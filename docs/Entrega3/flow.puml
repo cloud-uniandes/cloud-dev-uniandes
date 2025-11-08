@@ -1,0 +1,110 @@
+@startuml video_processing_flow_s3
+!theme plain
+skinparam backgroundColor white
+skinparam handwritten false
+
+title **Flujo de Procesamiento de Video con S3**
+
+|Usuario|
+start
+:Usuario accede a /docs;
+:Login y obtiene JWT token;
+:Selecciona archivo MP4;
+
+|#LightBlue|FastAPI (EC2)|
+:Recibe POST /api/v1/videos/upload;
+:Valida JWT token;
+
+if (¿Token válido?) then (no)
+  :Retorna 401 Unauthorized;
+  stop
+endif
+
+:Valida archivo\n(tamaño <100MB, formato MP4);
+
+if (¿Archivo válido?) then (no)
+  :Retorna 400 Bad Request;
+  stop
+endif
+
+:Lee archivo en memoria (bytes);
+
+|#SkyBlue|S3Storage|
+:Sube a S3: uploads/UUID.mp4\n(ContentType: video/mp4);
+
+|#LightBlue|FastAPI (EC2)|
+:Crea registro en RDS PostgreSQL\n(status: pending, file_path: uploads/UUID.mp4);
+
+:Encola tarea en RabbitMQ\nprocess_video_task(video_id, s3_key);
+
+:Retorna 201 Created\n{id, status: "processing"};
+
+|Usuario|
+:Recibe respuesta JSON;
+
+|#LightGreen|Celery Worker (EC2)|
+:Consume tarea de RabbitMQ;
+
+:Actualiza status → "processing" en RDS;
+
+|#SkyBlue|S3Storage|
+:Descarga de S3 → /tmp/anb-temp/UUID_input.mp4;
+
+|#LightGreen|Celery Worker (EC2)|
+:Valida video con FFprobe;
+
+if (¿Video válido?) then (no)
+  :Actualiza status → "failed";
+  :Limpia archivos temporales;
+  stop
+endif
+
+fork
+  :Carga video con MoviePy;
+  :Trim a 30 segundos (si necesario);
+fork again
+  :Descarga logo de S3: resources/logo720.png;
+end fork
+
+:Redimensiona a 720p (width par);
+:Aplica fade-in al video;
+
+:Compone clips:\n- Intro logo (2.5s)\n- Video con watermark\n- Outro logo (2.5s);
+
+:Renderiza a /tmp/UUID_processed.mp4\n(H.264, yuv420p, 30fps);
+
+:Valida video procesado localmente\n(FFprobe + extracción de frame);
+
+if (¿Procesado válido?) then (no)
+  :Guarda copia corrupta para debug;
+  :Actualiza status → "failed";
+  stop
+endif
+
+|#SkyBlue|S3Storage|
+:Sube a S3: processed/UUID.mp4\n(ContentType: video/mp4);
+
+:Descarga de S3 para verificar integridad;
+
+|#LightGreen|Celery Worker (EC2)|
+if (¿Tamaños coinciden?) then (no)
+  :Actualiza status → "failed";
+  stop
+endif
+
+:Actualiza RDS PostgreSQL:\n- status → "processed"\n- file_path → processed/UUID.mp4\n- duration_seconds;
+
+:Guarda resultado en Redis;
+
+:Limpia archivos temporales\n(/tmp/UUID_*.mp4);
+
+|Usuario|
+:Consulta GET /api/v1/videos/{id};
+:Recibe status: "processed";
+
+:Solicita presigned URL de S3;
+:Reproduce video directamente desde S3;
+
+stop
+
+@enduml
