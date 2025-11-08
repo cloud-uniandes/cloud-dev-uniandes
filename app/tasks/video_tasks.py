@@ -28,10 +28,10 @@ SyncSessionLocal = sessionmaker(bind=sync_engine)
 if settings.STORAGE_TYPE == "s3":
     from app.storage.s3_storage import S3Storage
     storage_s3 = S3Storage()
-    logger.info("🪣 Celery using S3 storage backend")
+    logger.info(" Celery using S3 storage backend")
 else:
     storage_s3 = None
-    logger.info("📁 Celery using local/NFS storage backend")
+    logger.info(" Celery using local/NFS storage backend")
 
 
 @celery_app.task(name="process_video")
@@ -185,8 +185,8 @@ def process_video_task(video_id: str, temp_file_path: str):
 
         # Remove audio
         final_clip = final_clip.without_audio()
-        logger.info("🔇 Audio removed")
-        logger.info(f"📊 Final clip FPS: {final_clip.fps}, Duration: {final_clip.duration}s, Size: {final_clip.size}")
+        logger.info(" Audio removed")
+        logger.info("f Final clip FPS: {final_clip.fps}, Duration: {final_clip.duration}s, Size: {final_clip.size}")
 
         # PASO 4: Export
         if settings.STORAGE_TYPE == "s3":
@@ -279,7 +279,7 @@ def process_video_task(video_id: str, temp_file_path: str):
             
             # Upload to S3
             s3_processed_key = f"processed/{video_id}.mp4"
-            logger.info(f"📤 Uploading VALIDATED video to S3: {s3_processed_key}")
+            logger.info(f" Uploading VALIDATED video to S3: {s3_processed_key}")
             
             if not storage_s3.upload_file_sync(local_temp_output, s3_processed_key):
                 raise Exception("Failed to upload to S3")

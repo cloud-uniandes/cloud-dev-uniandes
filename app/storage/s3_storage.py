@@ -39,7 +39,7 @@ class S3Storage(BaseStorage):
         
         # Si las credenciales están en settings (no None), usarlas
         if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
-            logger.info("🔑 Using AWS credentials from settings (environment variables)")
+            logger.info(" Using AWS credentials from settings (environment variables)")
             self.s3_client = boto3.client(
                 's3',
                 aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
@@ -50,7 +50,7 @@ class S3Storage(BaseStorage):
             # boto3 buscará automáticamente las credenciales:
             # - En ~/.aws/credentials (desarrollo local)
             # - En IAM Role (si está en EC2/ECS)
-            logger.info("🔐 Using AWS credentials from IAM role or AWS CLI config")
+            logger.info(" Using AWS credentials from IAM role or AWS CLI config")
             self.s3_client = boto3.client(
                 's3',
                 region_name=settings.AWS_REGION
@@ -61,15 +61,15 @@ class S3Storage(BaseStorage):
         # Verificar conexión
         try:
             self.s3_client.head_bucket(Bucket=self.bucket_name)
-            logger.info(f"✅ S3Storage initialized - Bucket: {self.bucket_name}")
+            logger.info(f" S3Storage initialized - Bucket: {self.bucket_name}")
         except ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == '404':
-                logger.error(f"❌ Bucket '{self.bucket_name}' does not exist")
+                logger.error(f" Bucket '{self.bucket_name}' does not exist")
             elif error_code == '403':
-                logger.error(f"❌ Access denied to bucket '{self.bucket_name}'. Check IAM permissions.")
+                logger.error(f" Access denied to bucket '{self.bucket_name}'. Check IAM permissions.")
             else:
-                logger.error(f"❌ Error connecting to S3: {e}")
+                logger.error(f" Error connecting to S3: {e}")
             raise
     
     async def save_file(self, file_content: bytes, filename: str, subfolder: str = "uploads") -> str:
@@ -90,7 +90,7 @@ class S3Storage(BaseStorage):
         try:
             loop = asyncio.get_event_loop()
             
-            # ✅ FIX: Especificar Content-Type para video
+            #  FIX: Especificar Content-Type para video
             await loop.run_in_executor(
                 None,
                 partial(
@@ -99,18 +99,18 @@ class S3Storage(BaseStorage):
                     self.bucket_name,
                     s3_key,
                     ExtraArgs={
-                        'ContentType': 'video/mp4',  # ✅ CRÍTICO
+                        'ContentType': 'video/mp4',  #  CRÍTICO
                         'ContentDisposition': 'inline'
                     }
                 )
             )
-            logger.info(f"✅ File uploaded to S3: {s3_key}")
+            logger.info(f" File uploaded to S3: {s3_key}")
             
             # Retornar S3 key (similar a como LocalStorage retorna path)
             return s3_key
             
         except ClientError as e:
-            logger.error(f"❌ Error uploading to S3: {e}")
+            logger.error(f" Error uploading to S3: {e}")
             raise Exception(f"Failed to upload file to S3: {str(e)}")
     
     async def delete_file(self, path: str) -> bool:
@@ -133,10 +133,10 @@ class S3Storage(BaseStorage):
                     Key=path
                 )
             )
-            logger.info(f"🗑️ File deleted from S3: {path}")
+            logger.info(f" File deleted from S3: {path}")
             return True
         except ClientError as e:
-            logger.error(f"❌ Error deleting from S3: {e}")
+            logger.error(f" Error deleting from S3: {e}")
             return False
     
     def get_file_url(self, path: str) -> str:
@@ -155,22 +155,22 @@ class S3Storage(BaseStorage):
                 Params={'Bucket': self.bucket_name, 'Key': path},
                 ExpiresIn=3600  # 1 hora
             )
-            logger.info(f"🔗 Generated presigned URL for: {path}")
+            logger.info(f" Generated presigned URL for: {path}")
             return url
         except ClientError as e:
-            logger.error(f"❌ Error generating presigned URL: {e}")
+            logger.error(f" Error generating presigned URL: {e}")
             return ""
     
     # Métodos adicionales útiles para Celery (síncrono)
     def upload_file_sync(self, local_path: str, s3_key: str) -> bool:
         """Upload file from local path to S3 (synchronous for Celery)"""
         try:
-            # ✅ FIX CRÍTICO: Leer archivo como binario y especificar Content-Type
+            #  FIX CRÍTICO: Leer archivo como binario y especificar Content-Type
             import os
             
             # Verificar que el archivo existe
             if not os.path.exists(local_path):
-                logger.error(f"❌ File not found: {local_path}")
+                logger.error(f" File not found: {local_path}")
                 return False
             
             # Leer archivo en modo binario
@@ -179,28 +179,28 @@ class S3Storage(BaseStorage):
             
             # Verificar que no está vacío
             if len(file_data) == 0:
-                logger.error(f"❌ File is empty: {local_path}")
+                logger.error(f" File is empty: {local_path}")
                 return False
             
-            logger.info(f"📦 Uploading {len(file_data) / (1024*1024):.2f} MB to S3: {s3_key}")
+            logger.info(f" Uploading {len(file_data) / (1024*1024):.2f} MB to S3: {s3_key}")
             
             # Subir como binario con Content-Type correcto
             self.s3_client.put_object(
                 Bucket=self.bucket_name,
                 Key=s3_key,
-                Body=file_data,  # ✅ Buffer binario (no path string)
-                ContentType='video/mp4',  # ✅ CRÍTICO
+                Body=file_data,  #  Buffer binario (no path string)
+                ContentType='video/mp4',  #  CRÍTICO
                 ContentDisposition='inline'
             )
             
-            logger.info(f"✅ Uploaded to S3: {s3_key}")
+            logger.info(f" Uploaded to S3: {s3_key}")
             return True
             
         except ClientError as e:
-            logger.error(f"❌ Error uploading file: {e}")
+            logger.error(f" Error uploading file: {e}")
             return False
         except Exception as e:
-            logger.error(f"❌ Unexpected error uploading file: {e}")
+            logger.error(f" Unexpected error uploading file: {e}")
             return False
     
     def download_file_sync(self, s3_key: str, local_path: str) -> bool:
@@ -211,27 +211,27 @@ class S3Storage(BaseStorage):
             # Crear directorio si no existe
             os.makedirs(os.path.dirname(local_path), exist_ok=True)
             
-            # ✅ FIX: Descargar y escribir en modo binario
+            #  FIX: Descargar y escribir en modo binario
             response = self.s3_client.get_object(Bucket=self.bucket_name, Key=s3_key)
             
-            with open(local_path, 'wb') as f:  # ✅ 'wb' = write binary
+            with open(local_path, 'wb') as f:  #  'wb' = write binary
                 f.write(response['Body'].read())
             
             # Verificar que se descargó correctamente
             if not os.path.exists(local_path):
-                logger.error(f"❌ Downloaded file not found: {local_path}")
+                logger.error(f" Downloaded file not found: {local_path}")
                 return False
             
             file_size = os.path.getsize(local_path)
-            logger.info(f"✅ Downloaded from S3: {s3_key} ({file_size / (1024*1024):.2f} MB)")
+            logger.info(f" Downloaded from S3: {s3_key} ({file_size / (1024*1024):.2f} MB)")
             
             return True
             
         except ClientError as e:
-            logger.error(f"❌ Error downloading file: {e}")
+            logger.error(f" Error downloading file: {e}")
             return False
         except Exception as e:
-            logger.error(f"❌ Unexpected error downloading file: {e}")
+            logger.error(f" Unexpected error downloading file: {e}")
             return False
     
     def file_exists(self, s3_key: str) -> bool:
