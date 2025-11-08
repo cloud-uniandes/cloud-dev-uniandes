@@ -167,7 +167,7 @@ def process_video_task(video_id: str, temp_file_path: str):
         ])
 
         # Remove audio
-        final_clip = final_clip.without_audio(None)
+        final_clip = final_clip.without_audio()
         logger.info(" Audio removed")
         logger.info(f"📊 Final clip FPS: {final_clip.fps}, Duration: {final_clip.duration}s")
 
