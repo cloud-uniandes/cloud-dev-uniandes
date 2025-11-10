@@ -167,7 +167,7 @@ Sistema **estable** durante 5 minutos continuos, p95 no muestra un gran cambio c
 | **Tasa de error en capacidad sostenible** | 0.02% |
 | **Recurso crítico** | CPU del servidor API |
 
-![alt text](image-4.png)
+![alt text](image-5.png)
 
 **Análisis:**  
 No hay una correlacion entre los usuarios concurrentes y el porcentaje de errores, lo que indica que la aplicacion no esta fallando con el aumento de carga sino solo se degrada el rendimiento para estas magnitudes de carga. 
@@ -201,3 +201,4 @@ No hay una correlacion entre los usuarios concurrentes y el porcentaje de errore
 
 
 ---
+
