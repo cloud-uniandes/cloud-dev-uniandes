@@ -167,16 +167,10 @@ Sistema **estable** durante 5 minutos continuos, p95 no muestra un gran cambio c
 | **Tasa de error en capacidad sostenible** | 0.02% |
 | **Recurso crítico** | CPU del servidor API |
 
----
+![alt text](image-4.png)
 
-## Gráficos Clave
-
-**Incluir:**
-1. **Usuarios vs Tiempo de Respuesta (p95)** → Curva mostrando degradación
-2. **Usuarios vs Throughput** → Plateau en ~600 usuarios
-3. **Usuarios vs Tasa de Error** → Spike en 700 usuarios
-4. **CPU Utilization (CloudWatch)** → Timeline durante toda la prueba
-
+**Análisis:**  
+No hay una correlacion entre los usuarios concurrentes y el porcentaje de errores, lo que indica que la aplicacion no esta fallando con el aumento de carga sino solo se degrada el rendimiento para estas magnitudes de carga. 
 ---
 
 # Conclusiones Generales
@@ -204,5 +198,6 @@ Sistema **estable** durante 5 minutos continuos, p95 no muestra un gran cambio c
 | **Load Balancer** | Validar health checks y timeout configuration | Reducir 502/504 |
 | **Worker** | Aumentar concurrency de Celery: `--concurrency=4` | +100-200% videos/min |
 | **Observabilidad** | Integrar Prometheus + Grafana para métricas en tiempo real | Mejor visibilidad |
+
 
 ---
