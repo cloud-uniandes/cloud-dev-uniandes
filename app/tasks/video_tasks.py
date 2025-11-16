@@ -534,9 +534,8 @@ class SQSProcessWorker:
                 
                 if result:
                     print(f"[{self.processed_count}] Procesado:")
-                    print(f"  Original:  {result['original_message']}")
-                    print(f"  Cifrado:   {result['encrypted_message']}")
-                    print(f"  Timestamp: {result['processed_at']}\n")
+                    print(f"  Status:  {result['status']}")
+                    print(f"  Video_id:   {result['video_id']}")
                 else:
                     if not continuous:
                         print("⏳ No hay mensajes disponibles")
