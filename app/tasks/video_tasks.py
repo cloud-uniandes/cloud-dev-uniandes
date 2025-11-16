@@ -413,6 +413,7 @@ class SQSProcessWorker:
             return {
                 "status": "failed",
                 "video_id": video_id,
+                "file_path": temp_file_path,
                 "error": str(e)
             }
             
@@ -435,6 +436,7 @@ class SQSProcessWorker:
         
         payload['status'] = response["status"]
         payload['video_id'] = response["video_id"]
+        payload['file_path'] = response["file_path"]
         payload['process_shift'] = self.shift
         
         return payload
@@ -536,6 +538,7 @@ class SQSProcessWorker:
                     print(f"[{self.processed_count}] Procesado:")
                     print(f"  Status:  {result['status']}")
                     print(f"  Video_id:   {result['video_id']}")
+                    print(f"  file_path:   {result['file_path']}")
                 else:
                     if not continuous:
                         print("⏳ No hay mensajes disponibles")
