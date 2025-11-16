@@ -26,7 +26,6 @@ from app.core.exceptions import (
     NotFoundException,
     ForbiddenException
 )
-from app.tasks.video_tasks import process_video_task
 
 import boto3
 import json
