@@ -86,7 +86,7 @@ async def upload_video(
     
     # Queue the video processing task
     producer.send_message(str(video_id), str(temp_file_path))
-    task = process_video_task.delay(str(video.id), str(temp_file_path))
+    #task = process_video_task.delay(str(video.id), str(temp_file_path))
     
     return VideoUploadResponse(
         message="Video uploaded successfully and queued for processing",
