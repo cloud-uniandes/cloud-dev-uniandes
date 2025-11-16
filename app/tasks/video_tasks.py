@@ -435,7 +435,6 @@ class SQSProcessWorker:
         
         payload['status'] = response["status"]
         payload['video_id'] = response["video_id"]
-        payload['file_path'] = response["file_path"]
         payload['process_shift'] = self.shift
         
         return payload
