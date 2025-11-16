@@ -95,7 +95,7 @@ class SQSProcessWorker:
             logger.info(f" Processing video {video_id}")
 
             # Get video record
-            video = db.query(Video).filter(Video.id == video_id).first()
+            video = db.query(Video).filter(Video.file_path == 'uploads/' + video_id + '.mp4').first()
             
             if not video:
                 raise Exception(f"Video {video_id} with UUID {UUID(video_id)} not found in database")
