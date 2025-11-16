@@ -6,6 +6,7 @@ import uuid
 from pathlib import Path
 import aiofiles
 
+from app.core.message_producer import SQSMessageProducer
 from app.db.session import get_db
 from app.schemas.video import (
     VideoUploadResponse,
@@ -27,8 +28,14 @@ from app.core.exceptions import (
 )
 from app.tasks.video_tasks import process_video_task
 
-router = APIRouter()
+import boto3
+import json
+import time
+from datetime import datetime
+from botocore.exceptions import ClientError
 
+router = APIRouter()
+producer = SQSMessageProducer(queue_name='message-queue')
 
 @router.post(
     "/upload",
@@ -79,6 +86,7 @@ async def upload_video(
     )
     
     # Queue the video processing task
+    producer.send_message(str(video_id), str(temp_file_path))
     task = process_video_task.delay(str(video.id), str(temp_file_path))
     
     return VideoUploadResponse(
