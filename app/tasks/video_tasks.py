@@ -12,6 +12,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from moviepy import ImageClip, VideoFileClip, CompositeVideoClip, vfx
 
+from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.utils.video_validator_sync import validate_video_sync
 from app.models.video import Video
@@ -71,7 +72,7 @@ class SQSProcessWorker:
             print(f"  Ejecuta primero el producer para crear la cola")
             raise
     
-    def process_video_task(video_id: str, temp_file_path: str):
+    def process_video_task(self, video_id: str, temp_file_path: str):
         """
         Process uploaded video asynchronously.
         
