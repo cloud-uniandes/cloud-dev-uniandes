@@ -178,6 +178,9 @@ Cooldown: 600 segundos
 - **ALB Subnets:** 
   - `subnet-us-east-1a` (pública)
   - `subnet-us-east-1b` (pública)
+    
+### Política de autoescalamiento
+Configurado para agregar instancias cuando el uso de CPU supera el 60%. Se pueden producir máximo 3 instancias. 
 
 ### Ventajas
 
