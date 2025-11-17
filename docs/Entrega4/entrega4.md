@@ -5,6 +5,8 @@
 Implementación de **escalabilidad automática para workers** en la plataforma ANB Video, utilizando **Amazon SQS** como sistema de mensajería y configurando **Auto Scaling**. Se migró de RabbitMQ/Redis a SQS para aprovechar la infraestructura gestionada de AWS y la capacidad de autoscaling. Además se configuró alta disponibilidad multi zona.
 
 ---
+## Video sustentación
+[Video](https://uniandes-my.sharepoint.com/:v:/g/personal/l_murciac_uniandes_edu_co/IQBAjCxuZxiyR4OxQYQBIU37AfYrvV1SYiRC9oP4VrFSvhE?e=65o2eY&nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJTdHJlYW1XZWJBcHAiLCJyZWZlcnJhbFZpZXciOiJTaGFyZURpYWxvZy1MaW5rIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXcifX0%3D)
 
 ## 🎯 Cambios Principales vs. Entrega 3
 
