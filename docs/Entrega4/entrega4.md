@@ -6,7 +6,7 @@ Implementación de **escalabilidad automática para workers** en la plataforma A
 
 ---
 ## Video sustentación
-[Video](https://uniandes-my.sharepoint.com/:v:/g/personal/l_murciac_uniandes_edu_co/IQBAjCxuZxiyR4OxQYQBIU37AfYrvV1SYiRC9oP4VrFSvhE?e=65o2eY&nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJTdHJlYW1XZWJBcHAiLCJyZWZlcnJhbFZpZXciOiJTaGFyZURpYWxvZy1MaW5rIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXcifX0%3D)
+[Video](https://uniandes-my.sharepoint.com/:v:/g/personal/l_murciac_uniandes_edu_co/IQBAjCxuZxiyR4OxQYQBIU37AfYrvV1SYiRC9oP4VrFSvhE)
 
 ## 🎯 Cambios Principales vs. Entrega 3
 
