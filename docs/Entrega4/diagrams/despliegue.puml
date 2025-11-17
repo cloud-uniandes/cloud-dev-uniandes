@@ -1,0 +1,196 @@
+@startuml despliegue
+!theme plain
+skinparam backgroundColor white
+
+title **Diagrama de Despliegue - ANB Video Platform (Entrega 4)**\n**AWS Multi-AZ con Auto Scaling**
+
+actor "Usuario Final" as user
+
+cloud "**AWS Cloud - Region us-east-1**" {
+    
+    rectangle "**Availability Zone 1a**" #E8F5E9 {
+        node "**ALB Target**" {
+            artifact "EC2 API-1\nt3.medium\n2 vCPU, 4GB RAM" as ec2_api_1a_1
+            artifact "EC2 API-2\nt3.medium\n2 vCPU, 4GB RAM" as ec2_api_1a_2
+        }
+        
+        node "**Worker Pool**" {
+            artifact "EC2 Worker-1\nt3.large\n2 vCPU, 8GB RAM" as worker_1a_1
+        }
+        
+        node "**Database Primary**" {
+            database "RDS PostgreSQL\ndb.t3.small\nPrimary" as rds_primary
+        }
+    }
+    
+    rectangle "**Availability Zone 1b**" #FFF9C4 {
+        node "**ALB Target**" {
+            artifact "EC2 API-3\nt3.medium\n2 vCPU, 4GB RAM" as ec2_api_1b_1
+        }
+        
+        node "**Worker Pool**" {
+            artifact "EC2 Worker-2\nt3.large\n2 vCPU, 8GB RAM" as worker_1b_1
+        }
+        
+        node "**Database Standby**" {
+            database "RDS PostgreSQL\ndb.t3.small\nStandby" as rds_standby
+        }
+    }
+    
+    rectangle "**Global Services (Multi-AZ)**" #E1F5FE {
+        node "**Load Balancer**" {
+            component "Application\nLoad Balancer" as alb
+        }
+        
+        node "**Message Queue**" {
+            queue "Amazon SQS\nFIFO Queue" as sqs
+        }
+        
+        node "**Object Storage**" {
+            storage "S3 Bucket\nanb-video-storage-2025" as s3
+        }
+        
+        node "**Cache**" {
+            database "ElastiCache\nRedis Cluster" as redis
+        }
+        
+        node "**Monitoring**" {
+            component "CloudWatch" as cloudwatch
+            component "Auto Scaling\nGroups" as asg
+        }
+    }
+}
+
+' === Deployment Connections ===
+
+user -down-> alb : HTTPS:443
+
+alb -down-> ec2_api_1a_1 : HTTP:8000
+alb -down-> ec2_api_1a_2 : HTTP:8000
+alb -down-> ec2_api_1b_1 : HTTP:8000
+
+ec2_api_1a_1 -down-> sqs : SDK\nPublish
+ec2_api_1a_2 -down-> sqs : SDK\nPublish
+ec2_api_1b_1 -down-> sqs : SDK\nPublish
+
+ec2_api_1a_1 -down-> s3 : boto3\nUpload
+ec2_api_1a_1 -down-> rds_primary : asyncpg:5432
+
+sqs -down-> worker_1a_1 : SDK\nPoll
+sqs -down-> worker_1b_1 : SDK\nPoll
+
+worker_1a_1 -down-> s3 : boto3\nProcess
+worker_1a_1 -down-> rds_primary : asyncpg:5432
+worker_1a_1 -right-> redis : Results:6379
+
+worker_1b_1 -down-> s3 : boto3\nProcess
+worker_1b_1 -down-> rds_standby : asyncpg:5432
+worker_1b_1 -left-> redis : Results:6379
+
+rds_primary .down.> rds_standby : Replication\nSynchronous
+
+ec2_api_1a_1 -up-> cloudwatch : Logs/Metrics
+worker_1a_1 -up-> cloudwatch : Logs/Metrics
+
+asg -down-> ec2_api_1a_1 : Manage
+asg -down-> worker_1a_1 : Manage
+
+note top of alb
+    <color:black>
+    **Load Balancer Config:**
+    • Type: Application (Layer 7)
+    • Scheme: Internet-facing
+    • Listener: HTTPS:443
+    • Target: EC2 instances
+    • Health check: /health
+    • Interval: 30s
+    • Timeout: 5s
+    • Healthy threshold: 2
+    </color>
+end note
+
+note right of sqs
+    <color:black>
+    **SQS Queue Config:**
+    • Type: FIFO
+    • Name: video-processing.fifo
+    • Visibility: 300s
+    • Retention: 14 days
+    • Max message size: 256 KB
+    • Dead letter queue: enabled
+    • Max receives: 3
+    </color>
+end note
+
+note bottom of s3
+    <color:black>
+    **S3 Bucket Config:**
+    • Region: us-east-1
+    • Versioning: Enabled
+    • Encryption: AES-256
+    • Lifecycle: 90 days archive
+    • CORS: Configured
+    • Public access: Blocked
+    </color>
+end note
+
+note left of rds_primary
+    <color:black>
+    **RDS Config:**
+    • Engine: PostgreSQL 14.9
+    • Instance: db.t3.small
+    • Storage: 20 GB SSD
+    • Multi-AZ: Enabled
+    • Backup: Automated (7 days)
+    • Encryption: At rest
+    • Monitoring: Enhanced
+    </color>
+end note
+
+note right of redis
+    <color:black>
+    **ElastiCache Config:**
+    • Engine: Redis 7.0
+    • Node: cache.t3.micro
+    • Cluster mode: Disabled
+    • Encryption: In-transit
+    • Backup: Automated
+    </color>
+end note
+
+note bottom of asg
+    <color:black>
+    **Auto Scaling Policies:**
+    
+    **API Group:**
+    • Min: 2, Max: 10
+    • Metric: CPU > 70%
+    • Scale out: +2 instances
+    • Scale in: -1 instance
+    • Cooldown: 300s
+    
+    **Worker Group:**
+    • Min: 1, Max: 5
+    • Metric: Queue depth
+    • Target: 5 msgs/instance
+    • Scale out: +1 instance
+    • Scale in: -1 instance
+    • Cooldown: 600s
+    </color>
+end note
+
+legend bottom left
+    <color:black>
+    |= **Componente** |= **Tipo** |= **IP/DNS** |= **Costo Estimado** |
+    | ALB | Managed | anb-alb-*.elb.amazonaws.com | $16.20/mes |
+    | EC2 API (t3.medium) | Compute | Private IP | $30.37/mes cada |
+    | EC2 Worker (t3.large) | Compute | Private IP | $60.74/mes cada |
+    | RDS (db.t3.small) | Database | anb-db.*.rds.amazonaws.com | $24.82/mes |
+    | S3 | Storage | s3://anb-video-storage-2025 | $0.023/GB/mes |
+    | SQS | Queue | sqs.us-east-1.amazonaws.com | $0.40/millón req |
+    | ElastiCache | Cache | anb-redis.*.cache.amazonaws.com | $12.41/mes |
+    |= **TOTAL (Configuración mínima)** |= |= |= **~$150-300/mes** |
+    </color>
+endlegend
+
+@enduml

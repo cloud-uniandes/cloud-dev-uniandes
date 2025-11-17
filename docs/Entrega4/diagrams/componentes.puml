@@ -1,0 +1,165 @@
+@startuml componentes
+!theme plain
+skinparam backgroundColor white
+skinparam componentStyle rectangle
+
+title **Diagrama de Componentes - ANB Video Platform (Entrega 4)**\n**Auto Scaling + Mensajería Asíncrona**
+
+package "**Frontend Layer**" #E3F2FD {
+    component [Web UI\nReact/Angular] as frontend
+}
+
+package "**Load Balancing**" #FFF9C4 {
+    component [Application\nLoad Balancer] as alb
+    component [Auto Scaling\nGroup - API] as asg_api
+}
+
+package "**API Layer (Auto Scaled)**" #C8E6C9 {
+    component [Backend API 1\nFastAPI + Nginx] as api1
+    component [Backend API 2\nFastAPI + Nginx] as api2
+    component [Backend API N\nFastAPI + Nginx] as apiN
+    
+    package "API Modules" {
+        component [Auth Module\nJWT + OAuth] as auth
+        component [Video Module\nUpload/List] as video_api
+        component [Vote Module\nLikes/Dislikes] as vote
+        component [Public Module\nHealth/Metrics] as public
+    }
+}
+
+package "**Message Queue**" #FFCCBC {
+    queue [Amazon SQS\nTask Queue] as sqs
+    note right of sqs
+        <color:black>
+        **Queue Features:**
+        • FIFO or Standard
+        • Dead Letter Queue
+        • Visibility timeout: 300s
+        • Retention: 14 days
+        </color>
+    end note
+}
+
+package "**Worker Layer (Auto Scaled)**" #D1C4E9 {
+    component [Auto Scaling\nGroup - Workers] as asg_worker
+    
+    component [Worker 1\nCelery + FFmpeg] as worker1
+    component [Worker 2\nCelery + FFmpeg] as worker2
+    component [Worker N\nCelery + FFmpeg] as workerN
+    
+    package "Worker Modules" {
+        component [Video Processor\nFFmpeg Pipeline] as processor
+        component [Task Manager\nCelery] as celery
+        component [Validator\nFormat/Duration] as validator
+    }
+}
+
+package "**Storage Layer**" #B3E5FC {
+    storage [Amazon S3\nVideo Storage] as s3
+    
+    package "S3 Buckets" {
+        folder "uploads/\nOriginal Videos" as s3_uploads
+        folder "processed/\nProcessed Videos" as s3_processed
+        folder "resources/\nLogos & Assets" as s3_resources
+    }
+}
+
+package "**Database Layer**" #C5CAE9 {
+    database [RDS PostgreSQL\nMulti-AZ] as rds
+    
+    package "Database Schema" {
+        entity users
+        entity videos
+        entity votes
+    }
+}
+
+package "**Cache & Results**" #FFCDD2 {
+    database [ElastiCache Redis\nResults Backend] as redis
+}
+
+package "**Monitoring**" #F0F4C3 {
+    component [CloudWatch\nMetrics & Logs] as cloudwatch
+    component [Auto Scaling\nPolicies] as scaling_policies
+}
+
+' === Relaciones ===
+
+frontend -down-> alb : HTTPS
+alb -down-> asg_api : Health Checks\nRound Robin
+
+asg_api ..> api1 : Manages
+asg_api ..> api2 : Manages
+asg_api ..> apiN : Manages
+
+api1 -down-> auth
+api1 -down-> video_api
+api1 -down-> vote
+api1 -down-> public
+
+api1 -right-> sqs : <<publish>>\nSend Task
+api2 -right-> sqs : <<publish>>\nSend Task
+apiN -right-> sqs : <<publish>>\nSend Task
+
+api1 -down-> rds : asyncpg\nCRUD Operations
+api1 -down-> s3 : boto3\nUpload Original
+
+sqs -down-> asg_worker : Poll Tasks
+
+asg_worker ..> worker1 : Manages
+asg_worker ..> worker2 : Manages
+asg_worker ..> workerN : Manages
+
+worker1 -down-> processor
+worker1 -down-> celery
+worker1 -down-> validator
+
+worker1 -down-> s3 : Download/Upload\nProcessed Video
+worker1 -down-> rds : Update Status
+worker1 -right-> redis : Store Results
+
+cloudwatch <-- api1 : Logs/Metrics
+cloudwatch <-- worker1 : Logs/Metrics
+cloudwatch --> scaling_policies : Trigger Scale
+
+scaling_policies --> asg_api : Scale Out/In
+scaling_policies --> asg_worker : Scale Out/In
+
+note right of asg_api
+    <color:black>
+    **API Auto Scaling:**
+    • Min: 2 instances
+    • Max: 10 instances
+    • Target: CPU 70%
+    • Scale out: +2 instances
+    • Scale in: -1 instance
+    • Cooldown: 300s
+    </color>
+end note
+
+note left of asg_worker
+    <color:black>
+    **Worker Auto Scaling:**
+    • Min: 1 instance
+    • Max: 5 instances
+    • Metric: Queue depth
+    • Target: 5 msgs/worker
+    • Scale out: +1 instance
+    • Scale in: -1 instance
+    • Cooldown: 600s
+    </color>
+end note
+
+legend bottom left
+    <color:black>
+    |= **Componente** |= **Tecnología** |= **Escalamiento** |
+    | Backend API | FastAPI 0.104+ | Horizontal (Auto Scaling) |
+    | Worker | Celery 5.3+ | Horizontal (Auto Scaling) |
+    | Message Queue | Amazon SQS | Managed Service |
+    | Storage | Amazon S3 | Managed Service |
+    | Database | PostgreSQL 14+ | Vertical (Multi-AZ) |
+    | Cache | Redis 7+ | Managed Service |
+    </color>
+endlegend
+
+@enduml

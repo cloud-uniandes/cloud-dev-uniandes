@@ -1,0 +1,182 @@
+@startuml flujo
+!theme plain
+skinparam backgroundColor white
+
+title **Diagrama de Flujo - Procesamiento de Videos con Mensajería**\n**Auto Scaling + SQS**
+
+|Usuario|
+start
+:Selecciona video;
+:Completa formulario
+(título, descripción);
+
+|Frontend|
+:Valida tamaño
+(max 100MB);
+
+if (¿Tamaño válido?) then (sí)
+    :Envía multipart/form-data
+    a /api/v1/videos/upload;
+else (no)
+    :Muestra error
+    "Archivo muy grande";
+    stop
+endif
+
+|Load Balancer|
+:Distribuye request
+a instancia API disponible;
+
+|Backend API|
+:Valida JWT token;
+
+if (¿Token válido?) then (sí)
+    :Crea registro en BD
+    status = "uploaded";
+    
+    :Sube archivo original a S3
+    bucket: uploads/;
+    
+    if (¿Upload S3 exitoso?) then (sí)
+        :Publica mensaje en SQS
+        {video_id, file_path};
+        
+        :Retorna 202 Accepted
+        {video_id, status};
+        
+        |Frontend|
+        :Muestra "Video en cola
+        para procesamiento";
+        
+        |Auto Scaling - Workers|
+        partition "**CloudWatch Monitoring**" #FFE082 {
+            :Monitorea profundidad de cola;
+            
+            if (¿Queue depth > 5 msgs/worker?) then (sí)
+                :Trigger scale-out policy;
+                :Lanza nueva instancia EC2
+                (Worker N+1);
+                note right
+                    Cooldown: 600s
+                    Max instances: 5
+                end note
+            else (no)
+                :Mantiene workers actuales;
+            endif
+        }
+        
+        |Worker (Celery)|
+        :Poll SQS queue
+        (long polling 20s);
+        
+        :Recibe mensaje
+        {video_id, file_path};
+        
+        :Actualiza BD
+        status = "processing";
+        
+        partition "**Video Processing Pipeline**" #C5E1A5 {
+            :Descarga video de S3
+            uploads/{video_id};
+            
+            :Valida formato
+            (MP4, AVI, MOV);
+            
+            if (¿Formato válido?) then (sí)
+                :Extrae metadata
+                (duración, resolución);
+                
+                :Aplica watermark
+                (logo ANB);
+                
+                :Re-encode con FFmpeg
+                codec: H.264
+                bitrate: 2000k;
+                
+                :Genera thumbnail
+                (frame @ 2s);
+                
+                if (¿Procesamiento exitoso?) then (sí)
+                    :Sube video procesado a S3
+                    processed/{video_id};
+                    
+                    :Actualiza BD
+                    status = "processed"
+                    duration = X
+                    processed_path = S3_URL;
+                    
+                    :Guarda resultado en Redis
+                    key: task:{video_id};
+                    
+                    :Elimina mensaje de SQS;
+                    
+                    :Limpia archivos temp
+                    /tmp/anb-temp/*;
+                    
+                    |Frontend (Polling)|
+                    :Consulta estado del video
+                    GET /api/v1/videos/{id};
+                    
+                    :Muestra video procesado
+                    con player integrado;
+                    
+                    stop
+                else (error)
+                    :Captura error
+                    (logging);
+                    
+                    :Actualiza BD
+                    status = "failed"
+                    error_message = X;
+                    
+                    if (¿Reintentos < 3?) then (sí)
+                        :Devuelve mensaje a SQS
+                        (con delay);
+                        
+                        |Worker|
+                        :Espera visibility timeout;
+                        :Reintenta procesamiento;
+                    else (no)
+                        :Mueve a Dead Letter Queue;
+                        
+                        |Frontend|
+                        :Muestra error
+                        "Fallo en procesamiento";
+                        
+                        stop
+                    endif
+                endif
+            else (inválido)
+                :Actualiza BD
+                status = "failed"
+                error = "Invalid format";
+                
+                :Elimina archivo de S3;
+                
+                |Frontend|
+                :Muestra error
+                "Formato no soportado";
+                
+                stop
+            endif
+        }
+    else (error S3)
+        :Retorna 500 Internal Error
+        "Upload failed";
+        
+        |Frontend|
+        :Muestra error
+        "Error subiendo archivo";
+        
+        stop
+    endif
+else (token inválido)
+    :Retorna 401 Unauthorized;
+    
+    |Frontend|
+    :Redirige a login;
+    
+    stop
+endif
+
+@enduml
