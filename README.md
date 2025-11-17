@@ -12,6 +12,7 @@
 # Entrega 4
 [Video Sustentación](https://uniandes-my.sharepoint.com/:v:/g/personal/l_murciac_uniandes_edu_co/IQBAjCxuZxiyR4OxQYQBIU37AfYrvV1SYiRC9oP4VrFSvhE?nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJTdHJlYW1XZWJBcHAiLCJyZWZlcnJhbFZpZXciOiJTaGFyZURpYWxvZy1MaW5rIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXcifX0%3D&e=crDgNz)
 
+[Video Link Auxiliar](https://uniandes-my.sharepoint.com/:v:/g/personal/l_murciac_uniandes_edu_co/IQBAjCxuZxiyR4OxQYQBIU37AfYrvV1SYiRC9oP4VrFSvhE)
 [Documentación](https://github.com/cloud-uniandes/cloud-dev-uniandes/blob/main/docs/Entrega4/entrega4.md)
 
 ---
