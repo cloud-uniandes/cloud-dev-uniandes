@@ -1,0 +1,188 @@
+@startuml secuencia
+!theme plain
+skinparam backgroundColor white
+
+title **Diagrama de Secuencia - Upload y Procesamiento con SQS**\n**Auto Scaling + Mensajería Asíncrona**
+
+actor "Usuario" as user
+participant "Frontend\nReact" as frontend
+participant "ALB" as alb
+participant "Backend API\nFastAPI" as api
+participant "Amazon SQS\nFIFO Queue" as sqs
+participant "PostgreSQL\nRDS" as db
+participant "Amazon S3\nStorage" as s3
+participant "CloudWatch\nMetrics" as cw
+participant "Auto Scaling\nGroup" as asg
+participant "Worker\nCelery" as worker
+participant "ElastiCache\nRedis" as redis
+
+== **Fase 1: Upload de Video** ==
+
+user -> frontend: Selecciona video\n(test_video.mp4, 50MB)
+activate frontend
+
+frontend -> frontend: Valida cliente\n(tamaño, formato)
+
+frontend -> alb: POST /api/v1/videos/upload\nAuthorization: Bearer {token}\nContent-Type: multipart/form-data
+activate alb
+
+alb -> api: Distribuye a instancia\n(Round Robin)
+activate api
+
+api -> api: Valida JWT token\nExtrae user_id
+
+api -> db: INSERT INTO videos\n(id, title, user_id, status='uploaded')
+activate db
+db --> api: video_id: abc-123
+deactivate db
+
+api -> s3: PUT uploads/{video_id}.mp4\nOriginal file
+activate s3
+s3 --> api: 200 OK\nETag: "def456"
+deactivate s3
+
+api -> sqs: SendMessage\n{\n  "video_id": "abc-123",\n  "file_path": "uploads/abc-123.mp4",\n  "user_id": "user-789"\n}
+activate sqs
+sqs --> api: MessageId: msg-001\nSequenceNumber: 1
+deactivate sqs
+
+api --> alb: 202 Accepted\n{\n  "id": "abc-123",\n  "status": "uploaded",\n  "message": "Video queued for processing"\n}
+deactivate api
+
+alb --> frontend: 202 Accepted
+deactivate alb
+
+frontend --> user: "Video subido exitosamente\nProcesamiento en cola"
+deactivate frontend
+
+== **Fase 2: Auto Scaling (Si es necesario)** ==
+
+sqs -> cw: Publica métrica\nApproximateNumberOfMessages: 15
+activate cw
+
+cw -> cw: Evalúa condición\n15 msgs > (2 workers × 5 msgs/worker)
+
+cw -> asg: Trigger ScaleOut\nMetric: QueueDepth\nThreshold exceeded
+activate asg
+
+asg -> asg: Verifica cooldown\n(último scale: >600s)
+
+asg -> asg: Lanza EC2 Worker-3\nAMI: anb-worker-ami\nInstance type: t3.large
+
+asg --> cw: Worker-3 lanzado\nStatus: InService
+deactivate asg
+deactivate cw
+
+== **Fase 3: Procesamiento de Video** ==
+
+worker -> sqs: ReceiveMessage\n(LongPolling, WaitTime: 20s)
+activate worker
+activate sqs
+
+sqs --> worker: Message {\n  "video_id": "abc-123",\n  "file_path": "uploads/abc-123.mp4"\n}\nReceiptHandle: rcpt-001
+deactivate sqs
+
+worker -> db: UPDATE videos\nSET status='processing'\nWHERE id='abc-123'
+activate db
+db --> worker: 1 row affected
+deactivate db
+
+worker -> s3: GET uploads/abc-123.mp4
+activate s3
+s3 --> worker: Video bytes (50 MB)
+deactivate s3
+
+worker -> worker: Valida formato\n(moviepy.editor.VideoFileClip)
+
+worker -> worker: Extrae metadata\n(duración: 120s, resolución: 1920x1080)
+
+worker -> worker: Aplica watermark\n(logo ANB en esquina superior derecha)
+
+worker -> worker: Re-encode con FFmpeg\n[\n  codec: libx264,\n  bitrate: 2000k,\n  preset: medium\n]
+
+worker -> worker: Genera thumbnail\n(frame @ 2s)
+
+worker -> s3: PUT processed/abc-123.mp4\nProcessed video
+activate s3
+s3 --> worker: 200 OK\nETag: "ghi789"
+deactivate s3
+
+worker -> s3: PUT thumbnails/abc-123.jpg\nThumbnail
+activate s3
+s3 --> worker: 200 OK
+deactivate s3
+
+worker -> db: UPDATE videos SET\n  status='processed',\n  duration_seconds=120,\n  processed_path='processed/abc-123.mp4',\n  thumbnail_path='thumbnails/abc-123.jpg',\n  updated_at=NOW()\nWHERE id='abc-123'
+activate db
+db --> worker: 1 row affected
+deactivate db
+
+worker -> redis: SET task:abc-123\n{\n  "status": "success",\n  "result": "processed/abc-123.mp4"\n}\nEX 3600
+activate redis
+redis --> worker: OK
+deactivate redis
+
+worker -> sqs: DeleteMessage\nReceiptHandle: rcpt-001
+activate sqs
+sqs --> worker: 200 OK
+deactivate sqs
+
+worker -> worker: Limpia /tmp/anb-temp/abc-123.*
+
+worker -> cw: PutMetricData\nMetricName: VideoProcessingTime\nValue: 45s
+activate cw
+cw --> worker: OK
+deactivate cw
+deactivate worker
+
+== **Fase 4: Polling del Frontend** ==
+
+user -> frontend: "¿Ya está listo mi video?"
+activate frontend
+
+frontend -> alb: GET /api/v1/videos/abc-123\nAuthorization: Bearer {token}
+activate alb
+
+alb -> api: Route request
+activate api
+
+api -> db: SELECT * FROM videos\nWHERE id='abc-123'
+activate db
+db --> api: {\n  "id": "abc-123",\n  "status": "processed",\n  "processed_path": "processed/abc-123.mp4"\n}
+deactivate db
+
+api --> alb: 200 OK\n{\n  "id": "abc-123",\n  "status": "processed",\n  "url": "https://s3.../processed/abc-123.mp4"\n}
+deactivate api
+deactivate alb
+
+frontend --> user: "¡Video listo!\n[Reproducir Video]"
+deactivate frontend
+
+user -> frontend: Click en "Reproducir"
+activate frontend
+
+frontend -> s3: GET processed/abc-123.mp4\n(Presigned URL)
+activate s3
+s3 --> frontend: Video stream
+deactivate s3
+
+frontend --> user: Reproduce video\ncon watermark ANB
+deactivate frontend
+
+== **Fase 5: Scale-In (Después de inactividad)** ==
+
+note over cw, asg
+    Si QueueDepth < 2 msgs/worker
+    durante >600s (cooldown)
+    → Termina Worker-3
+end note
+
+cw -> asg: Trigger ScaleIn\nMetric: QueueDepth below target
+activate asg
+
+asg -> asg: Termina Worker-3\n(draining: espera tareas activas)
+
+asg --> cw: Worker-3 terminado\nDesired capacity: 2
+deactivate asg
+
+@enduml
