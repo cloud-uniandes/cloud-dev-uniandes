@@ -23,7 +23,7 @@ Implementación de **escalabilidad automática para workers** en la plataforma A
 
 ### Vista General
 
-![Arquitectura AWS](images/architecture_aws.png)
+![Arquitectura AWS](images/despliegue.png)
 
 La arquitectura ahora incorpora los siguientes componentes:
 
@@ -82,7 +82,7 @@ La arquitectura ahora incorpora los siguientes componentes:
 
 ## Diagrama de Componentes
 
-![Componentes](images/components_aws.png)
+![Componentes](images/componentes.png)
 
 **Cambios Clave:**
 
@@ -109,7 +109,7 @@ La arquitectura ahora incorpora los siguientes componentes:
 
 ## Flujo de Procesamiento con SQS
 
-![Flujo](images/video_processing_flow_s3.png)
+![Flujo](images/flujo.png)
 
 ### Fase 1: Upload y Encolado
 
@@ -145,7 +145,7 @@ La arquitectura ahora incorpora los siguientes componentes:
 
 ## Secuencia de Procesamiento
 
-![Secuencia](images/sequence.png)
+![Secuencia](images/secuencia.png)
 
 ---
 
