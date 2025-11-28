@@ -1,0 +1,318 @@
+@startuml secuencia_entrega5
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 150
+
+title Diagrama de Secuencia - Upload y Procesamiento de Video\nEntrega 5 (ECS con SQS y Auto Scaling)
+
+actor "Usuario" as user
+participant "ALB" as alb <<AWS>>
+participant "ECS API\nContainer" as api <<Fargate>>
+participant "PostgreSQL\n(RDS)" as db <<AWS>>
+participant "S3 Original\nBucket" as s3_orig <<AWS>>
+participant "SQS FIFO\nQueue" as sqs <<AWS>>
+participant "CloudWatch" as cw <<AWS>>
+participant "ECS Worker\nContainer" as worker <<Fargate>>
+participant "ElastiCache\nRedis" as redis <<AWS>>
+participant "S3 Processed\nBucket" as s3_proc <<AWS>>
+
+== Fase 1: Autenticación ==
+
+user -> alb: POST /api/auth/login\n{email, password}
+activate alb
+
+alb -> api: Forward request
+activate api
+
+api -> db: SELECT * FROM users\nWHERE email = ?
+activate db
+db --> api: User data
+deactivate db
+
+api -> api: Verify password hash
+api -> api: Generate JWT token
+
+api --> alb: 200 OK\n{access_token, user_id}
+deactivate api
+
+alb --> user: JWT token
+deactivate alb
+
+note right of user
+    Usuario almacena token
+    para requests subsiguientes
+end note
+
+== Fase 2: Upload de Video ==
+
+user -> alb: POST /api/videos/upload\nAuthorization: Bearer {token}\nContent-Type: multipart/form-data\n[video_file, title]
+activate alb
+
+alb -> api: Forward request to\navailable task
+activate api
+
+api -> api: Validate JWT token
+api -> api: Validate video\n(size, format, codec)
+
+alt Video inválido
+    api --> alb: 400 Bad Request\n{detail: "Invalid video"}
+    alb --> user: Error response
+    note right of user
+        Usuario recibe error
+        y puede corregir
+    end note
+else Video válido
+    
+    api -> db: INSERT INTO videos\n(user_id, title, status='pending')
+    activate db
+    db --> api: video_id = 12345
+    deactivate db
+    
+    note right of api
+        Video ID generado
+        por secuencia PostgreSQL
+    end note
+    
+    api -> s3_orig: PutObject\nKey: {user_id}/{video_id}/original.mp4\nBucket: anb-original-videos\nEncryption: SSE-S3
+    activate s3_orig
+    s3_orig --> api: ETag, VersionId
+    deactivate s3_orig
+    
+    note right of s3_orig
+        S3 almacena video original
+        con versionado habilitado
+    end note
+    
+    api -> db: UPDATE videos SET\noriginal_s3_key = ?,\noriginal_s3_bucket = ?,\nfile_size_bytes = ?
+    activate db
+    db --> api: OK
+    deactivate db
+    
+    api -> sqs: SendMessage\nQueue: video-processing.fifo\nMessageGroupId: {user_id}\nBody: {\n  "video_id": 12345,\n  "s3_key": "...",\n  "task_id": "uuid-xxx"\n}
+    activate sqs
+    sqs --> api: MessageId, SequenceNumber
+    deactivate sqs
+    
+    note right of sqs
+        SQS FIFO garantiza:
+        - Orden de procesamiento
+        - Exactly-once delivery
+        - MessageGroupId para particionamiento
+    end note
+    
+    api -> db: UPDATE videos SET\nstatus = 'queued',\ntask_id = ?
+    activate db
+    db --> api: OK
+    deactivate db
+    
+    api --> alb: 201 Created\n{\n  "id": 12345,\n  "status": "queued",\n  "task_id": "uuid-xxx",\n  "message": "Video queued"\n}
+    deactivate api
+    
+    alb --> user: Upload successful
+    deactivate alb
+    
+    note right of user
+        Usuario recibe confirmación
+        inmediata (< 5 segundos)
+        Puede cerrar navegador
+    end note
+    
+end
+
+== Fase 3: Monitoreo y Auto Scaling ==
+
+sqs -> cw: Publish metric\nApproximateNumberOfMessages = 8
+activate cw
+
+cw -> cw: Evaluate alarm:\nQueue Depth / Tasks > 3
+
+alt Queue depth alto
+    cw -> worker: Trigger Auto Scaling\nScale-out: +1 task
+    activate worker
+    
+    note right of worker
+        ECS lanza nuevo Worker Task
+        en subnet privada
+        Tiempo de startup: ~60s
+    end note
+    
+    worker --> cw: New task running
+    deactivate worker
+end
+
+deactivate cw
+
+== Fase 4: Procesamiento Asíncrono ==
+
+loop Worker polling
+    worker -> sqs: ReceiveMessage\nWaitTimeSeconds = 20\nMaxNumberOfMessages = 1\nVisibilityTimeout = 300s
+    activate worker
+    activate sqs
+    
+    alt Mensaje disponible
+        sqs --> worker: Message:\n{\n  "video_id": 12345,\n  "s3_key": "...",\n  "ReceiptHandle": "xxx"\n}
+        
+        worker -> db: UPDATE videos SET\nstatus = 'processing',\nprocessing_started_at = NOW()
+        activate db
+        db --> worker: OK
+        deactivate db
+        
+        worker -> s3_orig: GetObject\nKey: {user_id}/{video_id}/original.mp4
+        activate s3_orig
+        s3_orig --> worker: Video stream
+        deactivate s3_orig
+        
+        worker -> worker: Download to /tmp/\n{video_id}/original.mp4
+        
+        note right of worker
+            Worker procesa video:
+            1. FFmpeg decode
+            2. Transcode to 720p, 480p
+            3. Generate thumbnail
+            
+            Tiempo estimado:
+            - 50MB: ~30 segundos
+            - 100MB: ~60 segundos
+        end note
+        
+        worker -> worker: ffmpeg -i original.mp4\n-vf scale=1280:720\n-c:v h264 -preset fast\n-c:a aac\n720p.mp4
+        
+        worker -> worker: ffmpeg -i original.mp4\n-vf scale=854:480\n-c:v h264 -preset fast\n-c:a aac\n480p.mp4
+        
+        worker -> worker: ffmpeg -i original.mp4\n-ss 00:00:01 -vframes 1\nthumbnail.jpg
+        
+        alt Procesamiento exitoso
+            worker -> s3_proc: PutObject\nKeys:\n- 720p.mp4\n- 480p.mp4\n- thumbnail.jpg\nBucket: anb-processed-videos
+            activate s3_proc
+            s3_proc --> worker: URLs procesados
+            deactivate s3_proc
+            
+            worker -> db: UPDATE videos SET\nstatus = 'completed',\nprocessed_720p_url = ?,\nprocessed_480p_url = ?,\nthumbnail_url = ?,\nprocessing_completed_at = NOW()
+            activate db
+            db --> worker: OK
+            deactivate db
+            
+            worker -> redis: SET task:{task_id}\n{\n  "status": "completed",\n  "video_id": 12345\n}\nEX 3600
+            activate redis
+            redis --> worker: OK
+            deactivate redis
+            
+            worker -> sqs: DeleteMessage\nReceiptHandle: xxx
+            sqs --> worker: OK
+            
+            worker -> cw: PutMetric\nVideosProcessed = 1\nProcessingDuration = 45s
+            activate cw
+            cw --> worker: OK
+            deactivate cw
+            
+            note right of worker
+                Mensaje eliminado de SQS
+                Procesamiento completado
+            end note
+            
+        else Procesamiento fallido
+            worker -> worker: Increment retry count
+            
+            alt Retries < 3
+                worker -> sqs: ChangeMessageVisibility\nVisibilityTimeout = 300s
+                sqs --> worker: OK
+                
+                note right of sqs
+                    Mensaje será reintentado
+                    después de 5 minutos
+                end note
+                
+            else Retries >= 3
+                worker -> sqs: Move to DLQ\nQueue: video-processing-dlq.fifo
+                sqs --> worker: Moved to DLQ
+                
+                worker -> db: UPDATE videos SET\nstatus = 'failed',\nerror_message = ?,\nprocessing_failed_at = NOW()
+                activate db
+                db --> worker: OK
+                deactivate db
+                
+                worker -> cw: PutMetric\nVideosFailed = 1\nAlarm: DLQNotEmpty
+                activate cw
+                cw -> cw: Send SNS notification\nto DevOps team
+                deactivate cw
+                
+                note right of cw
+                    Alarma activada
+                    Notificación enviada
+                end note
+            end
+        end
+        
+    else No hay mensajes
+        sqs --> worker: Empty response\n(after 20s long poll)
+        
+        note right of worker
+            Worker espera 20 segundos
+            y reintenta (long polling)
+        end note
+    end
+    
+    deactivate sqs
+    deactivate worker
+end
+
+== Fase 5: Consulta de Estado ==
+
+user -> alb: GET /api/videos/12345\nAuthorization: Bearer {token}
+activate alb
+activate api
+
+alb -> api: Forward request
+
+api -> api: Validate JWT token
+
+api -> db: SELECT * FROM videos\nWHERE id = 12345\nAND user_id = ?
+activate db
+db --> api: Video data
+deactivate db
+
+alt Status = completed
+    api --> alb: 200 OK\n{\n  "id": 12345,\n  "status": "completed",\n  "processed_videos": {\n    "720p": "https://s3.../720p.mp4",\n    "480p": "https://s3.../480p.mp4"\n  },\n  "thumbnail": "https://s3.../thumb.jpg"\n}
+    
+    alb --> user: Video listo para reproducir
+    
+    note right of user
+        Usuario puede reproducir
+        video en cualquier resolución
+    end note
+    
+else Status = processing
+    api --> alb: 200 OK\n{\n  "status": "processing",\n  "progress": "60%"\n}
+    
+    alb --> user: Video en procesamiento
+    
+    note right of user
+        Usuario espera y
+        reintenta en 5 segundos
+    end note
+    
+else Status = failed
+    api --> alb: 200 OK\n{\n  "status": "failed",\n  "error": "Processing failed"\n}
+    
+    alb --> user: Error de procesamiento
+    
+    note right of user
+        Usuario ve mensaje de error
+        y puede reintentar upload
+    end note
+    
+else Status = queued
+    api --> alb: 200 OK\n{\n  "status": "queued",\n  "position": 3\n}
+    
+    alb --> user: Video en cola
+    
+    note right of user
+        Usuario espera y
+        reintenta en 10 segundos
+    end note
+end
+
+deactivate api
+deactivate alb
+
+@enduml

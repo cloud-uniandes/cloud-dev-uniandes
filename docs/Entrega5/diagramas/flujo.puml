@@ -1,0 +1,306 @@
+@startuml flujo_entrega5
+!define AWSPUML https://raw.githubusercontent.com/awslabs/aws-icons-for-plantuml/v14.0/dist
+!include AWSPUML/AWSCommon.puml
+
+skinparam activityBackgroundColor #E8F5E9
+skinparam activityBorderColor #4CAF50
+skinparam activityFontSize 12
+skinparam activityArrowColor #2E7D32
+
+title Flujo de Procesamiento de Videos - Entrega 5 (ECS)\nArquitectura Asíncrona con SQS y Auto Scaling
+
+|Usuario|
+start
+:Usuario se autentica;
+note right
+    POST /api/auth/login
+    - Credenciales validadas
+    - JWT token generado
+end note
+
+:Usuario selecciona video para subir;
+
+|ECS - API Container|
+:Recibe solicitud de upload;
+note right
+    POST /api/videos/upload
+    - Validación de token JWT
+    - Validación de tamaño/formato
+end note
+
+if (¿Video válido?) then (sí)
+    :Genera ID único para video;
+    
+    :Guarda metadatos en PostgreSQL;
+    note right
+        - video_id
+        - user_id
+        - title
+        - original_filename
+        - status: "pending"
+        - created_at
+    end note
+    
+    :Sube video original a S3;
+    note right
+        Bucket: anb-original-videos
+        Key: {user_id}/{video_id}/original.mp4
+        Storage Class: Standard
+        Encryption: SSE-S3
+    end note
+    
+    :Crea mensaje en SQS FIFO;
+    note right
+        Queue: video-processing.fifo
+        Message Body:
+        {
+          "video_id": 12345,
+          "user_id": 67,
+          "s3_key": "67/12345/original.mp4",
+          "task_id": "uuid-xxx",
+          "priority": "normal"
+        }
+        MessageGroupId: user_id
+    end note
+    
+    :Actualiza estado a "queued";
+    
+    :Retorna respuesta 201;
+    note right
+        {
+          "id": 12345,
+          "status": "queued",
+          "message": "Video queued for processing",
+          "task_id": "uuid-xxx"
+        }
+    end note
+    
+else (no)
+    :Retorna error 400;
+    note right
+        {
+          "detail": "Invalid video format or size"
+        }
+    end note
+    stop
+endif
+
+|Usuario|
+:Recibe confirmación de encolamiento;
+note right
+    Usuario puede cerrar navegador
+    Procesamiento continúa en background
+end note
+
+|CloudWatch|
+:Monitorea métricas de SQS;
+note right
+    - ApproximateNumberOfMessages
+    - ApproximateAgeOfOldestMessage
+    - NumberOfMessagesSent
+end note
+
+if (¿Queue Depth > 3 por worker?) then (sí)
+    :Activa alarma de Auto Scaling;
+    
+    |ECS Auto Scaling|
+    :Lanza nuevo Worker Task;
+    note right
+        Scale-out policy:
+        - Desired Count: +1
+        - Cooldown: 600s
+        - Max Tasks: 5
+    end note
+else (no)
+    :Mantiene workers actuales;
+endif
+
+|ECS - Worker Container|
+:Worker polling en SQS;
+note right
+    - Long polling: 20s
+    - WaitTimeSeconds: 20
+    - MaxNumberOfMessages: 1
+    - VisibilityTimeout: 300s
+end note
+
+:Recibe mensaje de SQS;
+
+:Actualiza estado a "processing";
+note right
+    UPDATE videos 
+    SET status = 'processing',
+        processing_started_at = NOW()
+    WHERE id = video_id
+end note
+
+:Descarga video de S3;
+note right
+    GetObject from anb-original-videos
+    Download to /tmp/{video_id}/
+end note
+
+:Procesa video con FFmpeg;
+note right
+    Conversiones:
+    1. 720p (HD)
+    2. 480p (SD)
+    3. Thumbnail (JPG)
+    
+    Configuración:
+    - Codec: H.264
+    - Audio: AAC
+    - Container: MP4
+end note
+
+if (¿Procesamiento exitoso?) then (sí)
+    :Sube videos procesados a S3;
+    note right
+        Bucket: anb-processed-videos
+        Keys:
+        - {user_id}/{video_id}/720p.mp4
+        - {user_id}/{video_id}/480p.mp4
+        - {user_id}/{video_id}/thumbnail.jpg
+    end note
+    
+    :Actualiza metadatos en PostgreSQL;
+    note right
+        UPDATE videos SET
+        status = 'completed',
+        processed_720p_url = 's3://...',
+        processed_480p_url = 's3://...',
+        thumbnail_url = 's3://...',
+        processing_completed_at = NOW(),
+        processing_duration_seconds = X
+    end note
+    
+    :Guarda resultado en Redis;
+    note right
+        Key: task:{task_id}
+        Value: {
+          "status": "completed",
+          "video_id": 12345,
+          "processed_at": "2025-11-16T..."
+        }
+        TTL: 3600s
+    end note
+    
+    :Elimina mensaje de SQS;
+    note right
+        DeleteMessage
+        ReceiptHandle: xxx
+    end note
+    
+    |CloudWatch|
+    :Registra métricas de éxito;
+    note right
+        - ProcessingDuration
+        - VideosProcessed
+        - CPUUtilization
+        - MemoryUtilization
+    end note
+    
+else (no)
+    :Incrementa contador de reintentos;
+    
+    if (¿Reintentos < 3?) then (sí)
+        :Devuelve mensaje a SQS;
+        note right
+            ChangeMessageVisibility
+            VisibilityTimeout: 300s
+            Mensaje será reintentado
+        end note
+        
+    else (no)
+        :Mueve mensaje a DLQ;
+        note right
+            Queue: video-processing-dlq.fifo
+            Max Receives: 3 alcanzado
+        end note
+        
+        :Actualiza estado a "failed";
+        note right
+            UPDATE videos SET
+            status = 'failed',
+            error_message = 'Processing failed',
+            processing_failed_at = NOW()
+        end note
+        
+        |CloudWatch|
+        :Registra métrica de fallo;
+        :Activa alarma de DLQ;
+        note right
+            SNS notification a equipo DevOps
+        end note
+    endif
+endif
+
+|Usuario|
+:Usuario consulta estado del video;
+note right
+    GET /api/videos/{video_id}
+    - Polling cada 5 segundos
+    - O WebSocket notification
+end note
+
+|ECS - API Container|
+:Consulta estado en PostgreSQL;
+
+if (¿Estado = completed?) then (sí)
+    :Retorna URLs de videos procesados;
+    note right
+        {
+          "id": 12345,
+          "status": "completed",
+          "processed_videos": {
+            "720p": "https://s3.../720p.mp4",
+            "480p": "https://s3.../480p.mp4"
+          },
+          "thumbnail": "https://s3.../thumbnail.jpg"
+        }
+    end note
+    
+    |Usuario|
+    :Reproduce video procesado;
+    stop
+    
+elseif (¿Estado = processing?) then (sí)
+    :Retorna estado "processing";
+    note right
+        {
+          "status": "processing",
+          "progress": "45%",
+          "estimated_time_remaining": "2 min"
+        }
+    end note
+    
+    |Usuario|
+    :Espera y reintenta;
+    
+elseif (¿Estado = failed?) then (sí)
+    :Retorna error de procesamiento;
+    note right
+        {
+          "status": "failed",
+          "error": "Video processing failed"
+        }
+    end note
+    
+    |Usuario|
+    :Muestra mensaje de error;
+    stop
+    
+else (queued)
+    :Retorna estado "queued";
+    note right
+        {
+          "status": "queued",
+          "position_in_queue": 5
+        }
+    end note
+    
+    |Usuario|
+    :Espera y reintenta;
+endif
+
+@enduml

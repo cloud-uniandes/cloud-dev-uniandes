@@ -1,0 +1,154 @@
+@startuml componentes_entrega5
+!define AWSPUML https://raw.githubusercontent.com/awslabs/aws-icons-for-plantuml/v18.0/dist
+!include AWSPUML/AWSCommon.puml
+!include AWSPUML/Compute/all.puml
+!include AWSPUML/NetworkingContentDelivery/all.puml
+!include AWSPUML/Database/all.puml
+!include AWSPUML/ApplicationIntegration/all.puml
+!include AWSPUML/Storage/all.puml
+!include AWSPUML/ManagementGovernance/all.puml
+
+skinparam componentStyle rectangle
+skinparam linetype ortho
+
+title Diagrama de Componentes - Entrega 5 (ECS)\nArquitectura de Microservicios con Auto Scaling
+
+' ===== CAPA DE PRESENTACIÓN =====
+package "Capa de Presentación" <<Cloud>> {
+    component "Cliente Web" as WebClient <<Browser>>
+    component "Cliente Móvil" as MobileClient <<Mobile>>
+}
+
+' ===== CAPA DE DISTRIBUCIÓN =====
+package "Capa de Distribución" <<AWS>> {
+    ElasticLoadBalancing(ALB, "Application\nLoad Balancer", "Distribución de tráfico HTTP/HTTPS")
+}
+
+' ===== CAPA DE APLICACIÓN - ECS CLUSTER =====
+package "ECS Cluster - API Services" <<AWS ECS>> {
+    package "API Service (Auto Scaled)" <<ECS Service>> {
+        Compute(APIContainer1, "API Container 1", "FastAPI + Nginx")
+        Compute(APIContainer2, "API Container 2", "FastAPI + Nginx")
+        Compute(APIContainerN, "API Container N", "FastAPI + Nginx")
+        
+        component "Auth Module" as AuthModule <<FastAPI>>
+        component "Video Module" as VideoModule <<FastAPI>>
+        component "Public Module" as PublicModule <<FastAPI>>
+        
+        APIContainer1 -down-> AuthModule
+        APIContainer1 -down-> VideoModule
+        APIContainer1 -down-> PublicModule
+    }
+    
+    note right of APIContainer1
+        **Auto Scaling Configuration**
+        - Min Tasks: 1
+        - Max Tasks: 3
+        - Target: CPU 80%
+        - Scale-out: +1 tasks
+        - Scale-in: -1 task
+        - Launch Type: Fargate
+    end note
+}
+
+' ===== CAPA DE PROCESAMIENTO ASÍNCRONO - ECS CLUSTER =====
+package "ECS Cluster - Worker Services" <<AWS ECS>> {
+    package "Worker Service (Auto Scaled)" <<ECS Service>> {
+        Compute(WorkerContainer1, "Worker Container 1", "Celery + FFmpeg")
+        Compute(WorkerContainer2, "Worker Container 2", "Celery + FFmpeg")
+        Compute(WorkerContainerN, "Worker Container N", "Celery + FFmpeg")
+        
+        component "Video Processing" as VideoProcessing <<Celery Task>>
+        component "FFmpeg Encoder" as FFmpegEncoder <<FFmpeg>>
+        
+        WorkerContainer1 -down-> VideoProcessing
+        VideoProcessing -down-> FFmpegEncoder
+    }
+    
+    note right of WorkerContainer1
+        **Auto Scaling Configuration**
+        - Min Tasks: 1
+        - Max Tasks: 3
+        - Target: Queue Depth / Tasks > 3
+        - Scale-out: +1 task
+        - Scale-in: -1 task
+        - Launch Type: Fargate
+    end note
+}
+
+' ===== CAPA DE MENSAJERÍA =====
+package "Message Queue Service" <<AWS>> {
+    SimpleQueueService(SQS, "Amazon SQS FIFO", "video-processing.fifo")
+    SimpleQueueService(DLQ, "Dead Letter Queue", "video-processing-dlq.fifo")
+    
+    SQS -right-> DLQ : "Failed messages\n(after 3 retries)"
+}
+
+' ===== CAPA DE CACHÉ =====
+package "Cache Layer" <<AWS>> {
+    ElastiCache(Redis, "ElastiCache Redis", "Results Backend + Session Store")
+}
+
+' ===== CAPA DE DATOS =====
+package "Data Layer" <<AWS>> {
+    RDS(PostgreSQL, "RDS PostgreSQL\nMulti-AZ", "Metadata + Users")
+    SimpleStorageService(S3Original, "S3 Bucket\nOriginal Videos", "anb-original-videos")
+    SimpleStorageService(S3Processed, "S3 Bucket\nProcessed Videos", "anb-processed-videos")
+}
+
+' ===== CAPA DE MONITOREO =====
+package "Monitoring & Observability" <<AWS>> {
+    CloudWatch(CloudWatch, "CloudWatch", "Logs + Metrics + Alarms")
+}
+
+' ===== RELACIONES PRINCIPALES =====
+WebClient -down-> ALB : "HTTP"
+MobileClient -down-> ALB : "HTTP"
+
+ALB -down-> APIContainer1 : "Target Group\nHealth Checks"
+ALB -down-> APIContainer2
+ALB -down-> APIContainerN
+
+APIContainer1 -down-> SQS : "Enqueue video\nprocessing tasks"
+APIContainer1 -down-> PostgreSQL : "SQL queries"
+APIContainer1 -down-> Redis : "Cache + Sessions"
+APIContainer1 -down-> S3Original : "Upload original\nvideos"
+
+WorkerContainer1 -up-> SQS : "Poll tasks"
+WorkerContainer2 -up-> SQS : "Poll tasks"
+WorkerContainerN -up-> SQS : "Poll tasks"
+
+WorkerContainer1 -down-> S3Original : "Download\noriginal videos"
+WorkerContainer1 -down-> S3Processed : "Upload\nprocessed videos"
+WorkerContainer1 -down-> PostgreSQL : "Update video\nstatus"
+WorkerContainer1 -down-> Redis : "Store task\nresults"
+
+APIContainer1 -down-> CloudWatch : "Application logs"
+WorkerContainer1 -down-> CloudWatch : "Processing logs"
+SQS -down-> CloudWatch : "Queue metrics"
+
+' ===== NOTAS ADICIONALES =====
+note bottom of SQS
+    **SQS Configuration**
+    - Message Retention: 14 days
+    - Visibility Timeout: 300s
+    - Max Receives: 3
+    - FIFO ordering
+end note
+
+note bottom of PostgreSQL
+    **RDS Configuration**
+    - Engine: PostgreSQL 15
+    - Instance: db.t3.small
+    - Multi-AZ: Enabled
+    - Automated Backups: 7 days
+end note
+
+note bottom of S3Original
+    **S3 Configuration**
+    - Versioning: Enabled
+    - Encryption: AES-256
+    - Lifecycle: Transition to Glacier after 90 days
+end note
+
+@enduml

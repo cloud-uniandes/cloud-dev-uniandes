@@ -1,0 +1,225 @@
+@startuml despliegue_entrega5
+skinparam linetype ortho
+skinparam rectangleBackgroundColor<<Cloud>> #E1F5FE
+skinparam rectangleBackgroundColor<<AZ>> #F3E5F5
+skinparam rectangleBackgroundColor<<Subnet>> #E8F5E9
+skinparam rectangleBackgroundColor<<Managed>> #FFF9C4
+skinparam nodeBorderColor #1976D2
+skinparam componentBorderColor #7B1FA2
+skinparam databaseBorderColor #388E3C
+
+title Diagrama de Despliegue - Entrega 5 (ECS)\nArquitectura AWS con Auto Scaling y Servicios Administrados
+
+actor "Usuarios\nWeb/Móvil" as users
+
+cloud "Internet" as internet {
+}
+
+rectangle "AWS Cloud - us-east-1" <<Cloud>> {
+    
+    rectangle "VPC - 10.0.0.0/16" as vpc {
+        
+        ' ===== AVAILABILITY ZONE 1 =====
+        rectangle "Availability Zone A\nus-east-1a" <<AZ>> as AZ1 {
+            
+            rectangle "Public Subnet 1\n10.0.1.0/24" <<Subnet>> as PublicSubnet1 {
+                component "Application\nLoad Balancer" as ALB <<ELB>>
+            }
+            
+            rectangle "Private Subnet 1\n10.0.10.0/24" <<Subnet>> as PrivateSubnet1 {
+                node "ECS Cluster\nanb-api-cluster" as ECSCluster1 <<Fargate>> {
+                    component "API Task 1\nFastAPI + Nginx\n2 vCPU, 4GB RAM" as APITask1 <<Container>>
+                    component "API Task 2\nFastAPI + Nginx\n2 vCPU, 4GB RAM" as APITask2 <<Container>>
+                }
+            }
+            
+            rectangle "Private Subnet 3\n10.0.30.0/24" <<Subnet>> as PrivateSubnet3 {
+                node "ECS Cluster\nanb-worker-cluster" as WorkerCluster1 <<Fargate>> {
+                    component "Worker Task 1\nCelery + FFmpeg\n2 vCPU, 8GB RAM" as WorkerTask1 <<Container>>
+                }
+            }
+            
+            rectangle "Private Subnet 5\n10.0.50.0/24" <<Subnet>> as DBSubnet1 {
+                database "RDS Primary\nPostgreSQL 15\ndb.t3.small" as RDS1 <<Multi-AZ>>
+            }
+        }
+        
+        ' ===== AVAILABILITY ZONE 2 =====
+        rectangle "Availability Zone B\nus-east-1b" <<AZ>> as AZ2 {
+            
+            rectangle "Public Subnet 2\n10.0.2.0/24" <<Subnet>> as PublicSubnet2 {
+            }
+            
+            rectangle "Private Subnet 2\n10.0.20.0/24" <<Subnet>> as PrivateSubnet2 {
+                node "ECS Cluster\nanb-api-cluster" as ECSCluster2 <<Fargate>> {
+                    component "API Task 3\nFastAPI + Nginx\n2 vCPU, 4GB RAM" as APITask3 <<Container>>
+                }
+            }
+            
+            rectangle "Private Subnet 4\n10.0.40.0/24" <<Subnet>> as PrivateSubnet4 {
+                node "ECS Cluster\nanb-worker-cluster" as WorkerCluster2 <<Fargate>> {
+                    component "Worker Task 2\nCelery + FFmpeg\n2 vCPU, 8GB RAM" as WorkerTask2 <<Container>>
+                }
+            }
+            
+            rectangle "Private Subnet 6\n10.0.60.0/24" <<Subnet>> as DBSubnet2 {
+                database "RDS Standby\nPostgreSQL 15\ndb.t3.small" as RDS2 <<Multi-AZ>>
+            }
+        }
+        
+        ' ===== CACHE SUBNET =====
+        rectangle "Private Subnet 7\n10.0.70.0/24" <<Subnet>> as CacheSubnet {
+            database "ElastiCache\nRedis Cluster\ncache.t3.small\n3 nodes" as Redis <<Redis>>
+        }
+    }
+    
+    ' ===== SERVICIOS ADMINISTRADOS AWS =====
+    rectangle "AWS Managed Services" <<Managed>> {
+        queue "Amazon SQS FIFO\nvideo-processing.fifo" as SQS
+        queue "Dead Letter Queue\nvideo-processing-dlq.fifo" as DLQ
+        
+        storage "S3 Bucket\nanb-original-videos\nVersioning + Encryption" as S3Original
+        storage "S3 Bucket\nanb-processed-videos\nVersioning + Encryption" as S3Processed
+        
+        component "CloudWatch\nLogs + Metrics + Alarms" as CloudWatch <<Monitoring>>
+        
+        component "IAM Role\nECS Task Execution Role" as TaskRole <<IAM>>
+    }
+}
+
+' ===== RELACIONES =====
+users -down-> internet
+internet -down-> ALB : "HTTPS (443)"
+
+ALB -down-> APITask1 : "HTTP (8000)\nTarget Group"
+ALB -down-> APITask2 : "HTTP (8000)"
+ALB -down-> APITask3 : "HTTP (8000)"
+
+APITask1 -down-> RDS1 : "PostgreSQL\n(5432)"
+APITask2 -down-> RDS1 : "PostgreSQL\n(5432)"
+APITask3 -down-> RDS1 : "PostgreSQL\n(5432)"
+
+APITask1 -down-> Redis : "Redis (6379)\nCache + Sessions"
+APITask1 -right-> SQS : "HTTPS (443)\nSend Messages"
+APITask1 -right-> S3Original : "HTTPS (443)\nPutObject"
+
+WorkerTask1 -up-> SQS : "HTTPS (443)\nReceive Messages"
+WorkerTask2 -up-> SQS : "HTTPS (443)\nReceive Messages"
+
+WorkerTask1 -left-> S3Original : "HTTPS (443)\nGetObject"
+WorkerTask1 -right-> S3Processed : "HTTPS (443)\nPutObject"
+WorkerTask1 -down-> RDS1 : "PostgreSQL (5432)\nUpdate Status"
+WorkerTask1 -down-> Redis : "Redis (6379)\nStore Results"
+
+RDS1 -right-> RDS2 : "Synchronous\nReplication"
+
+SQS -down-> DLQ : "Failed messages\n(after 3 retries)"
+
+APITask1 -down-> CloudWatch : "Application Logs"
+WorkerTask1 -down-> CloudWatch : "Processing Logs"
+SQS -down-> CloudWatch : "Queue Metrics"
+ECSCluster1 -down-> CloudWatch : "Container Metrics"
+
+APITask1 -up-> TaskRole : "AssumeRole"
+WorkerTask1 -up-> TaskRole : "AssumeRole"
+
+' ===== NOTAS =====
+note top of ALB
+    **Load Balancer Configuration**
+    • Scheme: Internet-facing
+    • IP Address Type: IPv4
+    • Health Check: GET /health (HTTP 200)
+    • Target Group: anb-api-tg
+    • Listener: HTTPS (443)
+    • SSL Certificate: ACM
+end note
+
+note right of ECSCluster1
+    **ECS Service Configuration - API**
+    • Launch Type: AWS Fargate
+    • Service Name: anb-api-service
+    • Desired Count: 2
+    • Min Capacity: 2
+    • Max Capacity: 10
+    • Auto Scaling Policy:
+      - Target: CPU 60%
+      - Scale-out: +2 tasks
+      - Scale-in: -1 task
+      - Cooldown: 300s
+    • Deployment: Rolling Update
+    • Network Mode: awsvpc
+    • Security Group: anb-api-sg
+end note
+
+note right of WorkerCluster1
+    **ECS Service Configuration - Worker**
+    • Launch Type: AWS Fargate
+    • Service Name: anb-worker-service
+    • Desired Count: 1
+    • Min Capacity: 1
+    • Max Capacity: 5
+    • Auto Scaling Policy:
+      - Target: Queue Depth / Tasks > 3
+      - Scale-out: +1 task
+      - Scale-in: -1 task
+      - Cooldown: 600s
+    • Deployment: Rolling Update
+    • Network Mode: awsvpc
+    • Security Group: anb-worker-sg
+end note
+
+note bottom of RDS1
+    **RDS Configuration**
+    • Engine: PostgreSQL 15.4
+    • Instance Class: db.t3.small
+    • Multi-AZ Deployment: Enabled
+    • Storage: 20 GB SSD (gp3)
+    • Automated Backups: 7 days retention
+    • Encryption at Rest: AES-256
+    • Enhanced Monitoring: Enabled
+end note
+
+note bottom of SQS
+    **SQS FIFO Configuration**
+    • Queue Type: FIFO
+    • Message Retention: 14 days
+    • Visibility Timeout: 300 seconds
+    • Receive Message Wait Time: 20s (Long Polling)
+    • Max Receives: 3 → DLQ
+    • Content-Based Deduplication: Enabled
+    • FIFO Throughput Limit: High throughput mode
+end note
+
+note bottom of S3Original
+    **S3 Bucket Configuration**
+    • Storage Class: Standard
+    • Versioning: Enabled
+    • Encryption: SSE-S3 (AES-256)
+    • Lifecycle Policy:
+      - Transition to Glacier: 90 days
+      - Expiration: 365 days
+    • Access: Private (IAM only)
+    • CORS: Enabled for uploads
+end note
+
+note bottom of Redis
+    **ElastiCache Configuration**
+    • Engine: Redis 7.0
+    • Node Type: cache.t3.small
+    • Number of Nodes: 3
+    • Replication: Enabled
+    • Multi-AZ: Enabled
+    • Automatic Failover: Enabled
+end note
+
+note bottom of TaskRole
+    **IAM Permissions**
+    • S3: GetObject, PutObject
+    • SQS: SendMessage, ReceiveMessage,
+           DeleteMessage
+    • RDS: Connect via IAM auth
+    • CloudWatch: PutMetricData, PutLogEvents
+    • ECR: Pull container images
+end note
+
+@enduml
