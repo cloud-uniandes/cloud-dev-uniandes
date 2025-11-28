@@ -2,7 +2,7 @@
 
 ## Descripción General
 
-Evolución de la plataforma ANB Video hacia una arquitectura de **contenedores con Amazon ECS (Elastic Container Service)**, implementando orquestación serverless con **AWS Fargate**, mensajería asíncrona con **Amazon SQS FIFO**, y auto scaling dinámico. Esta migración elimina la gestión de instancias EC2 y mejora la eficiencia operativa.
+Evolución de la plataforma ANB Video hacia una arquitectura de **contenedores con Amazon ECS (Elastic Container Service)**, implementando mensajería asíncrona con **Amazon SQS FIFO**, y auto scaling dinámico. Esta migración elimina la gestión de instancias EC2 y mejora la eficiencia operativa.
 
 ---
 
@@ -10,9 +10,9 @@ Evolución de la plataforma ANB Video hacia una arquitectura de **contenedores c
 
 | Aspecto | Entrega 3 (EC2) | Entrega 5 (ECS + SQS) |
 |---------|-----------------|----------------------|
-| **Compute** | EC2 Auto Scaling Group | ECS con AWS Fargate (serverless) |
-| **Backend** | 1-3 instancias t3.micro |1-3 tasks Fargate (2 vCPU, 4GB RAM) |
-| **Worker** | 1 EC2 t3.medium dedicado | 1-3 tasks Fargate (2 vCPU, 8GB RAM) |
+| **Compute** | EC2 Auto Scaling Group | ECS con AWS |
+| **Backend** | 1-3 instancias t3.micro |1-3 tasks (2 vCPU, 4GB RAM) |
+| **Worker** | 1 EC2 t3.medium dedicado | 1-3 tasks  (2 vCPU, 8GB RAM) |
 | **Message Broker** | ElastiCache Redis | Amazon SQS FIFO |
 | **Orquestación** | Manual (AMI + Launch Template) | ECS Service + Task Definitions |
 | **Tiempo de arranque** | ~3-4 minutos (EC2 bootstrap) | ~60 segundos (container pull) |
