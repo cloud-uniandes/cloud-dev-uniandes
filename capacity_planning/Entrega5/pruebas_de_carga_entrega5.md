@@ -3,7 +3,7 @@
 
 ## Objetivo General
 
-Evaluar la **capacidad máxima y estabilidad** del sistema bajo condiciones de carga progresivas con la nueva arquitectura de **mensajería asíncrona (SQS)** y **auto scaling**, identificando:
+Evaluar la **capacidad máxima y estabilidad** del sistema bajo condiciones de carga progresivas con los cambios de la arquitectura para usar ECS en lugar de EC2, identificando:
 
 - El **punto de saturación** de la capa web (usuarios concurrentes)
 - La **degradación del tiempo de respuesta** bajo cargas crecientes
@@ -316,6 +316,7 @@ Este documento presenta los resultados de las pruebas de capacidad del worker EC
 **Fecha**: Noviembre 2025  
 **Autor**: Equipo ANB Video  
 **Versión**: 1.0
+
 
 
 
