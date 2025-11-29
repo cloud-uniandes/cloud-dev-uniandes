@@ -1,0 +1,581 @@
+{
+  "queue_name": "message-queue",
+  "test_name": "test_3_2workers_2threads_50MB",
+  "samples": [
+    {
+      "timestamp": "2025-11-29T13:46:14.470637",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 0.8943731784820557,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:46:20.485966",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 6.9097020626068115,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:46:25.711282",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 12.135017395019531,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:46:30.946082",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 17.369818210601807,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:46:36.205211",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 22.628946781158447,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:46:41.550294",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 27.974030017852783,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:46:46.772475",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 33.19621133804321,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:46:52.004202",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 38.427937507629395,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:46:57.237876",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 35,
+      "elapsed": 43.661611557006836,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:47:02.642100",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 49.06583571434021,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:47:08.103275",
+      "messages": 51,
+      "in_flight": 3,
+      "delayed": 0,
+      "elapsed": 54.527010679244995,
+      "delta": 51,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:47:13.327519",
+      "messages": 54,
+      "in_flight": 3,
+      "delayed": 0,
+      "elapsed": 59.75125479698181,
+      "delta": 3,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:47:18.556474",
+      "messages": 36,
+      "in_flight": 3,
+      "delayed": 0,
+      "elapsed": 64.98021006584167,
+      "delta": -18,
+      "throughput": 216.0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:47:23.793137",
+      "messages": 33,
+      "in_flight": 3,
+      "delayed": 0,
+      "elapsed": 70.21687340736389,
+      "delta": -3,
+      "throughput": 36.0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:47:29.141301",
+      "messages": 48,
+      "in_flight": 3,
+      "delayed": 0,
+      "elapsed": 75.56503677368164,
+      "delta": 15,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:47:34.420611",
+      "messages": 33,
+      "in_flight": 3,
+      "delayed": 0,
+      "elapsed": 80.84434676170349,
+      "delta": -15,
+      "throughput": 180.0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:47:39.646488",
+      "messages": 42,
+      "in_flight": 3,
+      "delayed": 0,
+      "elapsed": 86.07022333145142,
+      "delta": 9,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:47:44.887059",
+      "messages": 39,
+      "in_flight": 3,
+      "delayed": 0,
+      "elapsed": 91.31079506874084,
+      "delta": -3,
+      "throughput": 36.0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:47:50.101880",
+      "messages": 15,
+      "in_flight": 3,
+      "delayed": 0,
+      "elapsed": 96.52561593055725,
+      "delta": -24,
+      "throughput": 288.0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:47:55.332551",
+      "messages": 33,
+      "in_flight": 3,
+      "delayed": 0,
+      "elapsed": 101.75628638267517,
+      "delta": 18,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:48:00.655888",
+      "messages": 15,
+      "in_flight": 3,
+      "delayed": 0,
+      "elapsed": 107.07962346076965,
+      "delta": -18,
+      "throughput": 216.0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:48:05.897103",
+      "messages": 9,
+      "in_flight": 3,
+      "delayed": 0,
+      "elapsed": 112.32083916664124,
+      "delta": -6,
+      "throughput": 72.0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:48:11.255215",
+      "messages": 6,
+      "in_flight": 3,
+      "delayed": 0,
+      "elapsed": 117.67895126342773,
+      "delta": -3,
+      "throughput": 36.0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:48:16.478752",
+      "messages": 0,
+      "in_flight": 3,
+      "delayed": 0,
+      "elapsed": 122.90248775482178,
+      "delta": -6,
+      "throughput": 72.0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:48:21.702146",
+      "messages": 0,
+      "in_flight": 3,
+      "delayed": 0,
+      "elapsed": 128.12588167190552,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:48:26.935393",
+      "messages": 12,
+      "in_flight": 3,
+      "delayed": 0,
+      "elapsed": 133.35912895202637,
+      "delta": 12,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:48:32.202843",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 138.6265788078308,
+      "delta": -12,
+      "throughput": 144.0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:48:37.462540",
+      "messages": 18,
+      "in_flight": 3,
+      "delayed": 0,
+      "elapsed": 143.88627576828003,
+      "delta": 18,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:48:43.388953",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 149.81268882751465,
+      "delta": -18,
+      "throughput": 216.0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:48:48.620640",
+      "messages": 3,
+      "in_flight": 3,
+      "delayed": 0,
+      "elapsed": 155.04437565803528,
+      "delta": 3,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:48:53.843597",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 160.26733303070068,
+      "delta": -3,
+      "throughput": 36.0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:48:59.063475",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 165.48721027374268,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:49:04.347763",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 170.77149868011475,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:49:09.600325",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 176.02406096458435,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:49:14.837266",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 181.26100158691406,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:49:20.066154",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 186.4898898601532,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:49:25.308050",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 191.73178553581238,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:49:30.538579",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 196.96231508255005,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:49:35.780013",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 202.20374846458435,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:49:41.007754",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 207.43148946762085,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:49:46.254372",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 212.67810797691345,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:49:51.479521",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 217.90325665473938,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:49:56.741196",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 223.16493225097656,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:50:02.042674",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 228.46641039848328,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:50:07.387640",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 233.81137537956238,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:50:13.487177",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 239.91091227531433,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:50:19.674638",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 246.09837365150452,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:50:24.893898",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 251.31763410568237,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:50:30.158089",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 256.5818247795105,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:50:35.382992",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 261.8067283630371,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:50:41.070689",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 267.49442505836487,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:50:46.394745",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 272.8184804916382,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:50:51.730591",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 278.1543273925781,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:50:56.943914",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 283.3676497936249,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:51:02.175809",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 288.5995452404022,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:51:07.397882",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 293.82161831855774,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    },
+    {
+      "timestamp": "2025-11-29T13:51:12.622820",
+      "messages": 0,
+      "in_flight": 0,
+      "delayed": 0,
+      "elapsed": 299.046555519104,
+      "delta": 0,
+      "throughput": 0,
+      "workers": 2
+    }
+  ],
+  "summary": {
+    "total_processed": 129,
+    "duration_minutes": 4.984109258651733,
+    "avg_throughput": 25.882257652372612
+  }
+}
