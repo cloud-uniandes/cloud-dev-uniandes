@@ -185,7 +185,7 @@ Este documento presenta los resultados de las pruebas de capacidad del worker EC
 ### Gráficas
 
 #### Test 1: 1 Worker × 2 Threads × 50MB (Baseline)
-![Test 1](results/test_1_1worker_2threads_50MB.png)
+![Test 1](Worker/results/test_1_1worker_2threads_50MB.png)
 
 **Observaciones:**
 - Throughput estable en ~4 videos/min
@@ -193,7 +193,7 @@ Este documento presenta los resultados de las pruebas de capacidad del worker EC
 - Sin saturación
 
 #### Test 2: 1 Worker × 4 Threads × 50MB
-![Test 2](results/test_2_1worker_4threads_50MB.png)
+![Test 2](Worker/results/test_2_1worker_4threads_50MB.png)
 
 **Observaciones:**
 - Throughput duplicado: ~8.5 videos/min
@@ -201,7 +201,7 @@ Este documento presenta los resultados de las pruebas de capacidad del worker EC
 - CPUbound (FFmpeg)
 
 #### Test 3: 2 Workers × 2 Threads × 50MB
-![Test 3](results/test_3_2workers_2threads_50MB.png)
+![Test 3](Worker/results/test_3_2workers_2threads_50MB.png)
 
 **Observaciones:**
 - Throughput de ~8.8 videos/min (similar a 1w × 4t)
@@ -228,7 +228,7 @@ Este documento presenta los resultados de las pruebas de capacidad del worker EC
 ---
 
 #### Test 4: 1 Worker × 2 Threads × 100MB
-![Test 4](results/test_4_1worker_2threads_100MB.png)
+![Test 4](Worker/results/test_4_1worker_2threads_100MB.png)
 
 **Observaciones:**
 - Throughput de ~2.1 videos/min (50% del throughput con 50MB)
@@ -316,5 +316,6 @@ Este documento presenta los resultados de las pruebas de capacidad del worker EC
 **Fecha**: Noviembre 2025  
 **Autor**: Equipo ANB Video  
 **Versión**: 1.0
+
 
 
