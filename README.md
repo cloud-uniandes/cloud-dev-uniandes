@@ -14,6 +14,13 @@
 
 [Video Link Auxiliar](https://uniandes-my.sharepoint.com/:v:/g/personal/l_murciac_uniandes_edu_co/IQBAjCxuZxiyR4OxQYQBIU37AfYrvV1SYiRC9oP4VrFSvhE)
 [Documentación](https://github.com/cloud-uniandes/cloud-dev-uniandes/blob/main/docs/Entrega4/entrega4.md)
+# Entrega 5
+[Documentación](https://github.com/cloud-uniandes/cloud-dev-uniandes/blob/main/docs/Entrega5/entrega5.md)
+
+
+[Documentación pruebas](https://github.com/cloud-uniandes/cloud-dev-uniandes/blob/main/capacity_planning/Entrega5/pruebas_de_carga_entrega5.md)
+
+
 
 ---
 API REST completa para la plataforma ANB Rising Stars Showcase - Sistema de carga de videos y votación para jugadores de baloncesto.
